@@ -1,0 +1,8 @@
+batch=$1
+piece=$2
+sel=$3
+dist=$4
+index=$5
+
+
+./ancestry_hmm -i panels/panel${batch}_${piece}_${index} -s sample -S 0.2 500 -P gss_outputs/jesper_out1_0_0 -D > ../outputs/OUT${batch}_${piece}_${sel}_${dist}_${index}

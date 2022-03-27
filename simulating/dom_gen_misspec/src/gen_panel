@@ -1,0 +1,14 @@
+batch=$1
+piece=$2
+m=$3
+g=$4
+m_m=$5
+index=$6
+
+#NOTE panel has new naming scheme
+
+rm -f selam_outputs/selam_output${batch}_${piece}_${index}
+./SELAM -d nls_demography.txt -o outputs/output${batch}_${piece}_${index} -c 2 0.427 0 -s selections/selection${batch}_${piece}_${index}
+rm -f panels/panel${m}_${g}_${index}
+perl simulate_reads.pl 1 1 selam_outputs/selam_output${batch}_${piece}_${index} < drosophila.0.4.txt > panels/panel${m}_${g}_${index}
+

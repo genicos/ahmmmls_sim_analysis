@@ -1,0 +1,9 @@
+Running these scripts requires an enviroment where matplotlib works
+
+We ran the following five commands to produce the figures
+
+python3 3rgraph.py
+python3 misspec_analysis.py
+python3 super.py
+python3 dom_add_analysis.py
+python3 two_site_analysis.py

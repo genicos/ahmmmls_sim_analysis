@@ -1,0 +1,18 @@
+
+./twopieces 0 0 0 &
+wait
+
+./twopieces 1 0 2 &
+wait
+
+./twopieces 2 1 0 &
+wait
+
+./twopieces 3 1 2 &
+wait
+
+./twopieces 4 2 0 &
+wait
+
+./twopieces 5 2 2 &
+wait

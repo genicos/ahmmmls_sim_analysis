@@ -1,0 +1,18 @@
+
+seq 0 19 | parallel python3 selection_generator.py 0 0 0 0 0 {} &
+seq 0 19 | parallel python3 selection_generator.py 0 1 0 1 0 {} &
+wait
+
+seq 0 19 | parallel python3 selection_generator.py 1 0 1 0 0 {} &
+seq 0 19 | parallel python3 selection_generator.py 1 1 1 1 0 {} &
+wait
+
+cd src
+
+seq 0 19 | parallel ./gen_panel                    0 0 0 0 0 {} &
+seq 0 19 | parallel ./gen_panel                    0 1 0 1 0 {} &
+wait
+
+seq 0 19 | parallel ./gen_panel                    1 0 1 0 0 {} &
+seq 0 19 | parallel ./gen_panel                    1 1 1 1 0 {} &
+wait

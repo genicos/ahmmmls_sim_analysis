@@ -1,0 +1,14 @@
+batch=$1
+piece=$2
+m=$3
+gens=$4
+genm=$5
+index=$6
+
+m_array=(0.1 0.5)
+genm_array=(50 200 500 800)
+
+prop=${m_array[$m]}
+generations=${genm_array[$genm]}
+
+./ancestry_hmm -i panels/panel${m}_${gens}_${index} -s sample -S $prop $generations -P gss_outputs/jesper_out1_0_0 -D > ../outputs/OUT${batch}_${piece}_${m}_${gens}_${genm}_${index}

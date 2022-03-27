@@ -1,0 +1,17 @@
+First, we ran
+
+./onlygenerate
+
+This generated the simulated populations.
+In order to run onlygenerate, the program SELAM must be downloaded,
+and the binary must be placed in src/
+Then we ran
+
+./extwopieces
+
+This runs ahmm_mls on the simulated populations. 
+Then we ran
+
+python3 gen_misspec_analysis.py
+
+This produces a tcv with the graphable data

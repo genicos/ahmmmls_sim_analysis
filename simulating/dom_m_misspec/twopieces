@@ -1,0 +1,6 @@
+x=$(($3+1))
+echo "piece $1 0 $2 $3 $4"
+echo "piece $1 1 $2 $x $4"
+./piece $1 0 $2 $3 $4 &
+./piece $1 1 $2 $x $4 &
+wait

@@ -1,0 +1,13 @@
+First, we ran
+
+./extwopieces
+
+This generated the simulated populations. 
+And ran ahmm_mls on them. 
+In order to run extwopieces, the program SELAM must be downloaded,
+and the binary must be placed in src/
+Then we ran
+
+python3 gss_super_analysis.py
+
+This produces a tcv with the graphable data
