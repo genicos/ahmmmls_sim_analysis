@@ -279,7 +279,7 @@ double to_be_optimized_only_near_sites(vector<double> parameters) {
     if(context.options.use_model_file)
         cores = 1;
     
-    vector<mat> transition_matrices = fast_transition_rates (
+    vector<mat> transition_matrices = alternative_fast_transition_rates (
         context.n_recombs,
         selection_recomb_rates,
         fitnesses,
@@ -294,7 +294,7 @@ double to_be_optimized_only_near_sites(vector<double> parameters) {
 
 
     
-    
+    /*
     vector<mat> these_neutral_transition_rates(neutral_transition_matrices.size());
     
 
@@ -328,7 +328,7 @@ double to_be_optimized_only_near_sites(vector<double> parameters) {
     double neutral_lnl = compute_lnl(these_neutral_transition_rates);
     
     
-
+    */
     if(context.options.verbose_stderr) {
         cerr << "lnl ratio = " << setprecision(15) << lnl << "\n";
         cerr << "TIME PASSED IN ONE ITERATION: " << (get_wall_time() - timer) << "\n";
@@ -336,7 +336,7 @@ double to_be_optimized_only_near_sites(vector<double> parameters) {
         cerr << "lnl ratio\t" << setprecision(15) << lnl << "\n";
     }
     
-    return lnl - neutral_lnl;
+    return lnl;
 }
 
 
