@@ -10,7 +10,7 @@
 double get_wall_time(){
     struct timeval time;
     if (gettimeofday(&time,NULL)){
-        //  Handle error
+        // error
         return 0;
     }
     return (double)time.tv_sec + (double)time.tv_usec * .000001;
@@ -19,90 +19,122 @@ double get_wall_time(){
 
 selection_opt context;
 
-void selection_opt::set_context(){
+void selection_opt::set_context() {
     context = *this;
 }
 
 
-double timer = 0;
 
-
-
-vector<double> get_local_ancestry(vector<mat> neutral_model){
+vector<double> get_local_ancestry (vector<mat> neutral_model) {
     
     map<int,vector<mat> > transition_matrix ;
 
-    alt_create_transition_matrix( transition_matrix, context.transition_matrix_information[context.markov_chain_information[0].ploidy_switch[0]], context.n_recombs, context.position, context.markov_chain_information[0].ploidy_switch[0], neutral_model ) ;
-
+    
+    for ( int m = 0 ; m < context.markov_chain_information.size() ; m ++ ) {
+        
+        alt_create_transition_matrix( transition_matrix, context.transition_matrix_information[context.markov_chain_information.at(m).number_chromosomes], context.n_recombs, context.position, context.markov_chain_information.at(m).number_chromosomes, neutral_model ) ;
+            
+        for ( int p = 0 ; p < context.markov_chain_information[m].ploidy_switch.size() ; p ++ ) {
+            alt_create_transition_matrix( transition_matrix, context.transition_matrix_information[context.markov_chain_information[m].ploidy_switch[p]], context.n_recombs,  context.position, context.markov_chain_information[m].ploidy_switch[p], neutral_model ) ;
+        }
+    }
+    
     vector<mat> interploidy_transitions;
 
 
     int sample_count = context.markov_chain_information.size();
     int site_count = context.markov_chain_information[0].alphas.size();
 
-
+    
     //populating alphas
     for ( int m = 0 ; m < context.markov_chain_information.size() ; m ++ ) {
         context.markov_chain_information[m].compute_forward_probabilities(  transition_matrix, interploidy_transitions) ;
     }
-
+    
     //populating betas
     for ( int m = 0 ; m < context.markov_chain_information.size() ; m ++ ) {
         context.markov_chain_information[m].compute_backward_probabilities( transition_matrix, interploidy_transitions ) ;
     }
 
-    
-    vector<double> expected_ancestry(context.markov_chain_information[0].alphas.size());
+    vector<double> data_ancestry(context.markov_chain_information[0].alphas.size());
 
+    
     //looping through samples
     for ( int m = 0 ; m < context.markov_chain_information.size() ; m ++ ) {
 
         //looping through sites
-        for( int i = 0; i < expected_ancestry.size(); i++){
+        for( int i = 0; i < data_ancestry.size(); i++){
+
+            
+
             vec smoothed_probs = context.markov_chain_information[m].alphas[i] % context.markov_chain_information[m].betas[i] ;
             normalize( smoothed_probs ) ;
 
             //ploidy 1
-            if(smoothed_probs.size() == 2){
-                expected_ancestry[i] += smoothed_probs[0];
+            if(smoothed_probs.size() == 2) {
+                data_ancestry[i] += smoothed_probs[0];
             }
 
             //ploidy 2
-            if(smoothed_probs.size() == 3){
-                expected_ancestry[i] += smoothed_probs[0];
-                expected_ancestry[i] += smoothed_probs[1] * 0.5;
+            if(smoothed_probs.size() == 3) {
+                data_ancestry[i] += smoothed_probs[0];
+                data_ancestry[i] += smoothed_probs[1] * 0.5;
             }
 
             //TODO generalize ploidy here
         }
 
     }
-
-    for( int i = 0; i < expected_ancestry.size(); i++){
-        expected_ancestry[i] /= sample_count;
+    
+    for( int i = 0; i < data_ancestry.size(); i++){
+        data_ancestry[i] /= sample_count;
     }
 
-    return expected_ancestry;
+
+    vector<double> smoothed_data_ancestry(data_ancestry.size());
+    
+    for(int i = 1; i < smoothed_data_ancestry.size() - 1; i++){
+
+        double total = 0;
+        double count = 0;
+        
+        for(int j = i; context.morgan_position[i] - context.morgan_position[j] < 0.001 && j >= 0; j--){
+            total += data_ancestry[j];
+            count ++;
+        }
+        for(int j = i + 1; context.morgan_position[j] - context.morgan_position[i] < 0.001 && j < smoothed_data_ancestry.size(); j++){
+            total += data_ancestry[j];
+            count ++;
+        }
+        
+        smoothed_data_ancestry[i] = total/count;
+    }
+    
+    return data_ancestry;
 }
 
 
 
 
-
-vector<mat> last_calculated_transition_matricies;
-
-double to_be_optimized(vector<double> parameters){
+void prepare_selection_info(vector<double> &parameters, vector<double> &selection_recomb_rates, vector<vector<double>> &fitnesses){
 
     int selected_sites_count = parameters.size()/3;
-    vector<double> selection_recomb_rates(selected_sites_count + 1);
-    vector<vector<double>> fitnesses(selected_sites_count);
+    selection_recomb_rates.resize(selected_sites_count + 1);
+    fitnesses.resize(selected_sites_count);
 
     if(selected_sites_count > 0){
         
-        cerr << "Calculating likelihood for\n";
-        for (uint i = 0; i < selected_sites_count; i++){
-            cerr << "selection site: " << parameters[3*i + 0] << " with fitness: " << parameters[3*i + 1] << ",1," << parameters[3*i + 2] << "\n";
+        if(context.options.verbose_stderr){
+            cerr << "\nTesting parameters:\n";
+            for (uint i = 0; i < selected_sites_count; i++){
+                cerr << "selection site: " << parameters[3*i + 0] << " with fitness: " << parameters[3*i + 1] << ",1," << parameters[3*i + 2] << "\n";
+            }
+        }else{
+            for (uint i = 0; i < selected_sites_count; i++){
+                cerr << parameters[3*i + 0] << "\t" << parameters[3*i + 1] << "\t" << parameters[3*i + 2] << "\n";
+            }
         }
+
         //Sort selected sites and fitnesses///////////////////////////
         struct Selected_pair{                                       //
             double site;
@@ -146,138 +178,124 @@ double to_be_optimized(vector<double> parameters){
         selection_recomb_rates[0] = 1;
     }
 
+}
+
+
+
+
+double compute_lnl(vector<mat> &transition_matrices){
+
+
+    map<int,vector<mat> > transition_matrix ;
+    
+    
+    // Compute transition matricies for different ploidies
+    for ( int m = 0 ; m < context.markov_chain_information.size() ; m ++ ) {
+        
+        alt_create_transition_matrix( transition_matrix, context.transition_matrix_information[context.markov_chain_information.at(m).number_chromosomes], context.n_recombs, context.position, context.markov_chain_information.at(m).number_chromosomes, transition_matrices ) ;
+            
+        for ( int p = 0 ; p < context.markov_chain_information[m].ploidy_switch.size() ; p ++ ) {
+            alt_create_transition_matrix( transition_matrix, context.transition_matrix_information[context.markov_chain_information[m].ploidy_switch[p]], context.n_recombs, context.position, context.markov_chain_information[m].ploidy_switch[p], transition_matrices ) ;
+        }
+    }
+    
+    
+    vector<mat> interploidy_transitions;
+
+    
+    double lnl = 0 ;
+    
+    // Sum up log likelihoods for each panel
+    for ( int m = 0 ; m < context.markov_chain_information.size() ; m ++ ) {
+        lnl += context.markov_chain_information[m].compute_lnl( transition_matrix, interploidy_transitions) ;
+    }
+    
+    return lnl;
+}
+
+
+
+
+
+vector<mat> last_calculated_transition_matricies;
+
+double to_be_optimized(vector<double> parameters){
+
+    double timer = get_wall_time();
+    
+    vector<double> selection_recomb_rates;
+    vector<vector<double>> fitnesses;
+    
+
+    prepare_selection_info(parameters, selection_recomb_rates, fitnesses);
+
+    int cores = context.options.cores;
+    if(context.options.use_model_file)
+        cores = 1;
 
     vector<mat> transition_matrices = calculate_transition_rates(
         context.n_recombs,
         selection_recomb_rates,
         fitnesses,
         context.options.m,
-        context.options.generations
+        context.options.generations,
+        cores
     );
-    last_calculated_transition_matricies = transition_matrices;
     
-    //sometimes i need this? sometimes i dont?
-    //No i definitely need this
-    cerr << '\n';
-    
-
-
-    map<int,vector<mat> > transition_matrix ;
-
-    alt_create_transition_matrix( transition_matrix, context.transition_matrix_information[context.markov_chain_information[0].ploidy_switch[0]], context.n_recombs, context.position, context.markov_chain_information[0].ploidy_switch[0], transition_matrices ) ;
-
-
-    vector<mat> interploidy_transitions;
-
-    
-    double lnl = 0 ;
-    
-    
-    for ( int m = 0 ; m < context.markov_chain_information.size() ; m ++ ) {
-        lnl += context.markov_chain_information[m].compute_forward_probabilities( transition_matrix, interploidy_transitions) ;
+    if(parameters.size() == 0){
+        last_calculated_transition_matricies = transition_matrices;
     }
+    
+    
+    double lnl = compute_lnl(transition_matrices);
 
-
-    cerr << "lnl = " << setprecision(15) << lnl << "\n";
-
-    cerr << "TIME PASSED IN ONE ITERATION: " << (get_wall_time() - timer) << "\n";
-    timer = get_wall_time();
+    if(context.options.verbose_stderr){
+        cerr << "lnl = " << setprecision(15) << lnl << "\n";
+        cerr << "TIME PASSED IN ONE ITERATION: " << (get_wall_time() - timer) << "\n";
+    }else{
+        cerr << "lnl\t" << setprecision(15) << lnl << "\n";
+    }
+    
     return lnl;
 }
+
+
+
 
 
 vector<mat> neutral_transition_matrices;
 
 double to_be_optimized_only_near_sites(vector<double> parameters) {
 
-    int selected_sites_count = parameters.size()/3;
-    vector<double> selection_recomb_rates(selected_sites_count + 1);
-    vector<vector<double>> fitnesses(selected_sites_count);
-
-    if(selected_sites_count > 0){
-
-        cerr << "Calculating likelihood for\n";
-        for (uint i = 0; i < selected_sites_count; i++){
-            cerr << "selection site: " << parameters[3*i + 0] << " with fitness: " << parameters[i*3 + 1] << ",1," << parameters[i*3 + 2] << "\n";
-        }
-
-        //Sort selected sites and fitnesses///////////////////////////
-        struct Selected_pair{                                       //
-            double site;
-            vector<double> fitness;
-
-            bool operator<(const Selected_pair x) const
-                { return site < x.site;}
-        };
-        
-        //Fill vector of structs
-        vector<Selected_pair> selected_pairs(selected_sites_count);
-        for(int i = 0; i < selected_sites_count; i++){
-            Selected_pair ss;
-            ss.site = parameters[i*3];
-            ss.fitness.resize(3);
-            ss.fitness[0] = parameters[i*3 + 1];
-            ss.fitness[1] = 1;
-            ss.fitness[2] = parameters[3*i + 2];
-
-            selected_pairs[i] = ss;
-        }
-              
-        //sort
-        sort(selected_pairs.begin(), selected_pairs.end());         //
-        //////////////////////////////////////////////////////////////
-
-
-        double last = 0;
-        for (uint i = 0; i < selected_pairs.size(); i++){
-            selection_recomb_rates[i] = selected_pairs[i].site - last;
-            last = selected_pairs[i].site;
-        }
-
-        selection_recomb_rates[selected_pairs.size()] = 1 - last;
-
-        for(uint i = 0; i < selected_sites_count; i++){
-            fitnesses[i] = selected_pairs[i].fitness;
-        }
-        
-    }else{
-        selection_recomb_rates[0] = 1;
-    }
-
+    double timer = get_wall_time();
     
+    vector<double> selection_recomb_rates;
+    vector<vector<double>> fitnesses;
 
-    vector<mat> transition_matrices = fast_transition_rates(
+    prepare_selection_info(parameters, selection_recomb_rates, fitnesses);
+
+    int cores = context.options.cores;
+    
+    if(context.options.use_model_file)
+        cores = 1;
+    
+    vector<mat> transition_matrices = fast_transition_rates (
         context.n_recombs,
         selection_recomb_rates,
         fitnesses,
         context.options.m,
-        context.options.generations
+        context.options.generations,
+        cores
     );
 
     
-    //sometimes i need this? sometimes i dont?
-    //No i definitely need this
-    cerr << '\n';
     
+    double lnl = compute_lnl(transition_matrices);
 
 
-    map<int,vector<mat> > transition_matrix ;
-
-    alt_create_transition_matrix( transition_matrix, context.transition_matrix_information[context.markov_chain_information[0].ploidy_switch[0]], context.n_recombs, context.position, context.markov_chain_information[0].ploidy_switch[0], transition_matrices ) ;
-
-    vector<mat> interploidy_transitions;
-
-    double lnl = 0 ;
-    for ( int m = 0 ; m < context.markov_chain_information.size() ; m ++ ) {
-        lnl += context.markov_chain_information[m].compute_forward_probabilities( transition_matrix, interploidy_transitions) ;
-    }
-
-
-
+    
     
     vector<mat> these_neutral_transition_rates(neutral_transition_matrices.size());
-    
-    
     
 
     mat filler_matrix(2,2,fill::zeros);
@@ -286,6 +304,8 @@ double to_be_optimized_only_near_sites(vector<double> parameters) {
     filler_matrix(0,1) = 0.5;
     filler_matrix(1,0) = 0.5;
     filler_matrix(1,1) = 0.5;
+
+    int selected_sites_count = parameters.size() / 3;
     
     double sum = 0;
     for(uint i = 0; i < neutral_transition_matrices.size(); i++){
@@ -305,146 +325,22 @@ double to_be_optimized_only_near_sites(vector<double> parameters) {
     }
     
 
-    transition_matrix.clear();
+    double neutral_lnl = compute_lnl(these_neutral_transition_rates);
+    
+    
 
-    alt_create_transition_matrix( transition_matrix, context.transition_matrix_information[context.markov_chain_information[0].ploidy_switch[0]], context.n_recombs, context.position, context.markov_chain_information[0].ploidy_switch[0], these_neutral_transition_rates ) ;
-    
-    interploidy_transitions.clear();
-    
-    double neutral_lnl = 0 ;
-    for ( int m = 0 ; m < context.markov_chain_information.size() ; m ++ ) {
-        neutral_lnl += context.markov_chain_information[m].compute_forward_probabilities( transition_matrix, interploidy_transitions) ;
+    if(context.options.verbose_stderr) {
+        cerr << "lnl ratio = " << setprecision(15) << lnl << "\n";
+        cerr << "TIME PASSED IN ONE ITERATION: " << (get_wall_time() - timer) << "\n";
+    }else{
+        cerr << "lnl ratio\t" << setprecision(15) << lnl << "\n";
     }
     
-
-
-    cerr << "lnl ratio = " << setprecision(15) << lnl - neutral_lnl << "\n";
-
-    cerr << "TIME PASSED IN ONE ITERATION: " << (get_wall_time() - timer) << "\n";
-    timer = get_wall_time();
     return lnl - neutral_lnl;
 }
 
 
-//This function updates local_ancestries as a side effect
-double to_be_optimized_ignore_far_sites(vector<double> parameters){
 
-    int selected_sites_count = parameters.size() / 3;
-    vector<double> selection_recomb_rates(selected_sites_count + 1);
-    vector<vector<double>> fitnesses(selected_sites_count);
-
-    if(selected_sites_count > 0){
-
-        cerr << "Calculating likelihood for\n";
-        for (uint i = 0; i < selected_sites_count; i++){
-            cerr << "selection site: " << parameters[3*i + 0] << " with fitness: " << parameters[i*3 + 1] << ",1," << parameters[i*3 + 2] << "\n";
-        }
-
-        //Sort selected sites and fitnesses///////////////////////////
-        struct Selected_pair{                                       //
-            double site;
-            vector<double> fitness;
-
-            bool operator<(const Selected_pair x) const
-                { return site < x.site;}
-        };
-        
-        //Fill vector of structs
-        vector<Selected_pair> selected_pairs(selected_sites_count);
-        for(int i = 0; i < selected_sites_count; i++){
-            Selected_pair ss;
-            ss.site = parameters[i*3];
-            ss.fitness.resize(3);
-            ss.fitness[0] = parameters[i*3 + 1];
-            ss.fitness[1] = 1;
-            ss.fitness[2] = parameters[3*i + 2];
-
-            selected_pairs[i] = ss;
-        }
-              
-        //sort
-        sort(selected_pairs.begin(), selected_pairs.end());         //
-        //////////////////////////////////////////////////////////////
-
-
-        double last = 0;
-        for (uint i = 0; i < selected_pairs.size(); i++){
-            selection_recomb_rates[i] = selected_pairs[i].site - last;
-            last = selected_pairs[i].site;
-        }
-
-        selection_recomb_rates[selected_pairs.size()] = 1 - last;
-
-        for(uint i = 0; i < selected_sites_count; i++){
-            fitnesses[i] = selected_pairs[i].fitness;
-        }
-        
-    }else{
-        selection_recomb_rates[0] = 1;
-    }
-
-    
-    fast_transitions_radius_in_morgans = 0.1;
-    vector<mat> transition_matrices = fast_transition_rates(
-        context.n_recombs,
-        selection_recomb_rates,
-        fitnesses,
-        context.options.m,
-        context.options.generations
-    );
-    
-    
-    //sometimes i need this? sometimes i dont?
-    //No i definitely need this
-    cerr << '\n';
-    
-
-    double sum = 0;
-    for(uint i = 0; i < neutral_transition_matrices.size(); i++){
-        
-        sum += context.n_recombs[i];
-
-        bool near_a_selected_site = false;
-
-        for(uint j = 0; j < selected_sites_count; j++){
-
-            double distance = sum - parameters[j*3];
-
-            if ( distance <=  fast_transitions_radius_in_morgans 
-              && distance >= -fast_transitions_radius_in_morgans){
-
-                near_a_selected_site = true;
-            }
-        }
-
-        if(transition_matrices[i](0,0) == 0.5){
-            
-            transition_matrices[i] = neutral_transition_matrices[i];
-            local_ancestries[i] = context.options.m;
-        }
-    }
-    fast_transitions_radius_in_morgans = 0.01;
-
-
-    last_calculated_transition_matricies = transition_matrices;
-
-
-
-    map<int,vector<mat> > transition_matrix ;
-
-    alt_create_transition_matrix( transition_matrix, context.transition_matrix_information[context.markov_chain_information[0].ploidy_switch[0]], context.n_recombs, context.position, context.markov_chain_information[0].ploidy_switch[0], transition_matrices ) ;
-
-
-    vector<mat> interploidy_transitions;
-
-    double lnl = 0 ;
-    for ( int m = 0 ; m < context.markov_chain_information.size() ; m ++ ) {
-        lnl += context.markov_chain_information[m].compute_forward_probabilities( transition_matrix, interploidy_transitions) ;
-    }
-
-    
-    return lnl;
-}
 
 
 
@@ -596,7 +492,6 @@ vector<double> search_site                       (double chrom_size, nelder_mead
 
 vector<double> search_sites                      (double chrom_size, nelder_mead &opt, vector<vector<double>> sites, double width, double height, double depth);
 vector<double> search_sites_fast                 (double chrom_size, nelder_mead &opt, vector<vector<double>> sites, double width, double height, double depth);
-vector<double> search_sites_fast_fix_all_but_last(double chrom_size, nelder_mead &opt, vector<vector<double>> sites, double width, double height, double depth);
 
 
 
@@ -617,9 +512,13 @@ vector<double> multi_level_optimization(
     for(int j = 0; j < bottle_necks.size(); j++){
         for(int k = 0; k < bottle_necks[j].size(); k++){
             for(int l = 0; l < bottle_necks[j][k][0]; l++){
-                cerr << "\n SEARCH " << j + 1 << "/" << bottle_necks.size() << " " << k + 1 << "/" << bottle_necks[j].size() << " " << l + 1 << "/" << bottle_necks[j][k][0] << "\n";
+                if(context.options.verbose_stderr){
+                    cerr << "\n SEARCH " << j + 1 << "/" << bottle_necks.size() << " " << k + 1 << "/" << bottle_necks[j].size() << " " << l + 1 << "/" << bottle_necks[j][k][0] << "\n";
+                }
+
                 found_parameters = search(chrom_size, opt, sites, bottle_necks[j][k][1], bottle_necks[j][k][2], bottle_necks[j][k][3]);
-                        
+
+
                 cout << "\n Result of search" << j + 1 << "/" << bottle_necks.size() << " " << k + 1 << "/" << bottle_necks[j].size() << " " << l + 1 << "/" << bottle_necks[j][k][0] << "\n";
                 cout << opt.max_value << "\n";
                 for(uint j = 0; j < found_parameters.size(); j++){
@@ -644,363 +543,6 @@ vector<double> multi_level_optimization(
 
 
 
-vector<double> selection_opt::enact_optimization(){
-
-    // Hyper Parameters of optimization ///////////
-double nelder_mead_reflection  = 1;
-double nelder_mead_contraction = 0.5;
-double nelder_mead_expansion   = 2;
-double nelder_mead_shrinkage   = 0.5;
-
-
-    //////////////////////////////////////////////
-
-vector<vector<vector<double>>> bottle_necks;
-
-vector<vector<double>> shallow;
-
-vector<double> shallow_short(4);
-shallow_short[0] = 3;
-shallow_short[1] = 0.03;
-shallow_short[2] = 0.01;
-shallow_short[3] = 20;
-
-vector<double> shallow_medium(4);
-shallow_medium[0] = 3;
-shallow_medium[1] = 0.03;
-shallow_medium[2] = 0.03;
-shallow_medium[3] = 20;
-
-vector<double> shallow_tall(4);
-shallow_tall[0] = 3;
-shallow_tall[1] = 0.03;
-shallow_tall[2] = 0.05;
-shallow_tall[3] = 20;
-
-shallow.push_back(shallow_short);
-shallow.push_back(shallow_medium);
-shallow.push_back(shallow_tall);
-
-vector<vector<double>> deep;
-
-vector<double> deep_short(4);
-deep_short[0] = 3;
-deep_short[1] = 0.01;
-deep_short[2] = 0.005;
-deep_short[3] = 5;
-
-vector<double> deep_tall(4);
-deep_tall[0] = 3;
-deep_tall[1] = 0.01;
-deep_tall[2] = 0.01;
-deep_tall[3] = 5;
-
-deep.push_back(deep_short);
-deep.push_back(deep_tall);
-
-bottle_necks.push_back(shallow);
-bottle_necks.push_back(deep);
-
-
-
-
-
-vector<vector<vector<double>>> shallow_bottle_necks;
-
-vector<vector<double>> shallow1;
-
-//vector<double> shallow_short(4);
-shallow_short[0] = 3;
-shallow_short[1] = 0.03;
-shallow_short[2] = 0.01;
-shallow_short[3] = 20;
-
-//vector<double> shallow_tall(4);
-shallow_tall[0] = 3;
-shallow_tall[1] = 0.03;
-shallow_tall[2] = 0.05;
-shallow_tall[3] = 20;
-
-shallow1.push_back(shallow_short);
-shallow1.push_back(shallow_tall);
-
-vector<vector<double>> shallow2;
-
-//vector<double> deep_short(4);
-deep_short[0] = 3;
-deep_short[1] = 0.01;
-deep_short[2] = 0.005;
-deep_short[3] = 5;
-
-shallow2.push_back(deep_short);
-
-shallow_bottle_necks.push_back(shallow1);
-shallow_bottle_necks.push_back(shallow2);
-
-    // Create optimizer
-    nelder_mead optimizer(
-        nelder_mead_reflection,
-        nelder_mead_contraction,
-        nelder_mead_expansion,
-        nelder_mead_shrinkage
-    );
-
-    //set_context();
-    context = *this;
-    
-    
-    double chrom_size = 0;
-    for(uint i = 0; i < n_recombs.size(); i++){
-        chrom_size += n_recombs[i];
-    }
-
-    //TESTER CODE
-    if(true){
-
-        vector<double> poss(3);
-        poss[0] = 0.1;
-        poss[1] = 1;
-        poss[2] = 1.0204081632;
-        double poss_lnl = to_be_optimized(poss);
-
-
-        vector<double> real(3);
-        real[0] = 0.1;
-        real[1] = 1;
-        real[2] = 1.0204081632;
-        double real_lnl = to_be_optimized(real);
-        cerr << "\n";
-
-        cerr << "Poss point lnl: \t" << poss_lnl << "\n";
-        cerr << "Real point lnl: \t" << real_lnl << "\n";
-    }
-
-    // Calculating lnl for neutral model
-    vector<double> empty(0);
-    double neutral_lnl = to_be_optimized(empty);
-    
-
-    cerr << "Neutral likelihood: " << setprecision(15) << neutral_lnl << "\n";
-
-    neutral_transition_matrices = last_calculated_transition_matricies;
-
-
-
-
-    
-
-
-
-
-
-
-    //iterative selected site adding
-    vector<vector<double>> sites;
-    vector<bool> site_has_been_deep_searched; 
-
-    double last_lnl = neutral_lnl;
-    cout << "Neutral lnl\t" << setprecision(15) << neutral_lnl << "\n";
-    vector<double> data_ancestry;
-    vector<double> expected_ancestry;
-
-    //STANDARD: for now, only adds 5 sites
-    while(sites.size() < 5){
-
-        data_ancestry = get_local_ancestry(neutral_transition_matrices);
-        expected_ancestry = local_ancestries;
-
-        vector<double> smoothed_data_ancestry(data_ancestry.size());
-
-        double largest_deviation = 0;
-        int largest_deviator = 0;
-        for(int i = 1; i < n_recombs.size() - 1; i++){
-
-            double total = 0;
-            double count = 0;
-            for(int j = 0; morgan_position[i] - morgan_position[j] < 0.01 && j >= 0; j--){
-                total += data_ancestry[j];
-                count ++;
-            }
-            for(int j = 1; morgan_position[j] - morgan_position[i] < 0.01 && j < n_recombs.size(); j++){
-                total += data_ancestry[j];
-                count ++;
-            }
-            smoothed_data_ancestry[i] = total/count;
-
-
-            if (abs(smoothed_data_ancestry[i] - expected_ancestry[i]) > largest_deviation){
-                largest_deviation = abs(smoothed_data_ancestry[i] - expected_ancestry[i]);
-                largest_deviator = i;
-                cerr << "largestdeviator" << expected_ancestry[i] << "\t" << smoothed_data_ancestry[i] << "\t" << morgan_position[i] <<"\n";
-            }
-            if(i%100 == 0){
-                cerr << expected_ancestry[i] << "\t" << smoothed_data_ancestry[i] << "\t" << morgan_position[i] << "\n";
-            }
-        }
-
-        vector<double> new_site(3);
-        new_site[0] = morgan_position[largest_deviator];
-        new_site[1] = 1;
-        new_site[2] = 1;
-        
-
-        cerr << "placing at :\n";
-        cerr << new_site[0] << "\n";
-        cout << "Placing new site at: " << new_site[0] << "\n";
-
-        vector<double> best_parameters;
-        double best_ratio = -DBL_MAX;
-
-        vector<double> found_parameters;
-
-        
-        //generalized bottlenecking
-        if(true){
-
-            //Checking if new site is near an old site
-            bool new_site_is_close_to_existing_site_that_hasnt_been_deep_searched = false;
-            int site_its_close_to = 0;
-            for(int s = 0; s < sites.size(); s++){
-                if( abs(sites[s][0] - new_site[0]) < 0.05 && !site_has_been_deep_searched[s]){
-                    new_site_is_close_to_existing_site_that_hasnt_been_deep_searched = true;
-                    site_its_close_to = s;
-                }
-            }
-
-            cout << "close: " << new_site_is_close_to_existing_site_that_hasnt_been_deep_searched << "\n";
-
-            if(new_site_is_close_to_existing_site_that_hasnt_been_deep_searched){
-                //pop close one from sites and place it at the end
-                // then do a bottle_necks search with
-                // search sites fast fix all but last
-
-                //Remove site its close to and place it at the end
-                cout << "its close\n";
-
-                vector<double> near_site = sites[site_its_close_to];
-                sites.erase(sites.begin() + site_its_close_to);
-                sites.push_back(near_site);
-
-                multi_level_optimization(
-                    chrom_size,
-                    optimizer,
-                    sites,
-                    bottle_necks,
-                    &search_sites_fast_fix_all_but_last
-                );
-
-                site_has_been_deep_searched[site_has_been_deep_searched.size() - 1] = true;
-
-            }else{
-                
-                cout << "its not close\n";
-
-                sites.push_back(new_site);
-                site_has_been_deep_searched.push_back(false);
-                // do a bottle_necks search with
-                // search sites fast fix all but last
-
-                multi_level_optimization(
-                    chrom_size,
-                    optimizer,
-                    sites,
-                    shallow_bottle_necks,
-                    &search_sites_fast_fix_all_but_last
-                );
-            }
-            
-            /*
-            multi_level_optimization(
-                chrom_size,
-                optimizer,
-                sites,
-                bottle_necks,
-                &search_sites_fast
-            );
-            */
-
-
-            // i need a fine tune afterward when theres more than one site
-
-            /*
-            for(int j = 0; j < bottle_necks.size(); j++){
-                for(int k = 0; k < bottle_necks[j].size(); k++){
-                    for(int l = 0; l < bottle_necks[j][k][0]; l++){
-                        cerr << "\n SEARCH " << j << "/" << bottle_necks.size() << " " << k << "/" << bottle_necks[j].size() << " " << l << "/" << bottle_necks[j][k][0] << "\n";
-                        found_parameters = search_sites_fast_fix_all_but_last(chrom_size, optimizer, sites, bottle_necks[j][k][1], bottle_necks[j][k][2], bottle_necks[j][k][3]);
-                        
-                        cout << "\n Result of search " << j << "/" << bottle_necks.size() << " " << k << "/" << bottle_necks[j].size() << " " << l << "/" << bottle_necks[j][k][0] << "\n";
-                        cout << optimizer.max_value << "\n";
-                        for(uint j = 0; j < found_parameters.size(); j++){
-                            cout << found_parameters[j] << "\n";
-                        }
-                        cout << "\n";
-
-                        if(optimizer.max_value > best_ratio) {
-                            best_ratio = optimizer.max_value;
-                            best_parameters = found_parameters;
-                        }
-                    }
-                }
-                sites = parameters_to_sites(best_parameters);
-                best_ratio = -DBL_MAX;
-            }
-            */
-        }else{
-
-        }
-        //end of else
-
-
-        cerr << "\n\nBest sites so far:\n";
-        for(int k = 0; k < sites.size(); k++){
-
-            cerr << "site:\t" << sites[k][0] << "\t" << sites[k][1] << ",1," << sites[k][2] << " or " << sites[k][1]/max(sites[k][1], sites[k][2]) << ","<< 1/max(sites[k][1], sites[k][2]) <<"," << sites[k][2]/max(sites[k][1], sites[k][2]) << "\n";
-        }
-        cerr << "\n";
-
-        cout << "\nnew site added:\t" << sites[sites.size() - 1][0]
-        << "\n" << sites[sites.size() - 1][1]
-        << ",1," << sites[sites.size() - 1][2]
-        << " or\n" << sites[sites.size() - 1][1]/max(sites[sites.size() - 1][1], sites[sites.size() - 1][2])
-        << ","<< 1/max(sites[sites.size() - 1][1], sites[sites.size() - 1][2])
-        << "," << sites[sites.size() - 1][2]/max(sites[sites.size() - 1][1], sites[sites.size() - 1][2]) << "\n";
-
-        best_parameters = sites_to_parameters(sites);
-        double new_lnl = to_be_optimized(best_parameters);
-
-        cout <<"lnl after new site\t" << setprecision(15) << new_lnl << "\n";
-        
-
-        cerr << "lnl: " << new_lnl << "\n";
-
-        if(new_lnl - last_lnl < 1){
-            sites.pop_back();
-            break;
-        }
-        last_lnl = new_lnl;
-
-        //expected_ancestry = local_ancestries;
-
-        //exit(0);
-    }
-
-    cerr << "\n\nTERMINATED SEARCH\n\n\n";
-    cout << "TERMINATED SEARCH\n";
-
-    // I have to re-check sites by themselves to see if they really add to the lnl
-        
-
-    cerr << "Found sites:\n\n";
-    for(int k = 0; k < sites.size(); k++){
-        cout << "site:\t" << sites[k][0] << "\t" << sites[k][1] << ",1," << sites[k][2] << " or " << sites[k][1]/max(sites[k][1], sites[k][2]) << ","<< 1/max(sites[k][1], sites[k][2]) <<"," << sites[k][2]/max(sites[k][1], sites[k][2]) << "\n";
-        cerr << "site:\t" << sites[k][0] << "\t" << sites[k][1] << ",1," << sites[k][2] << " or " << sites[k][1]/max(sites[k][1], sites[k][2]) << ","<< 1/max(sites[k][1], sites[k][2]) <<"," << sites[k][2]/max(sites[k][1], sites[k][2]) << "\n";
-    }
-    
-    
-    
-    return sites_to_parameters(sites);
-}
 
 
 
@@ -1043,7 +585,9 @@ vector<double> search_sites(
     while(opt.max_value - opt.min_value > depth && opt.repeated_shrinkages < 4){
         opt.iterate(&to_be_optimized);
         
-        cerr << "INFO simplex_size: " << opt.simplex_size() << " output range: " << opt.max_value - opt.min_value << "\n";
+        if(context.options.verbose_stderr){
+            cerr << "nelder-mead simplex_size: " << opt.simplex_size() << " output range: " << opt.max_value - opt.min_value << "\n";
+        }
     }
 
     return opt.points[opt.max_index];
@@ -1052,7 +596,7 @@ vector<double> search_sites(
 
 
 vector<double> search_sites_fast(double chrom_size, nelder_mead &opt, vector<vector<double>> sites, double width, double height, double depth){
-
+    
     vector<double> center_point(sites.size()*3);
     vector<double> scales(sites.size()*3);
 
@@ -1081,7 +625,9 @@ vector<double> search_sites_fast(double chrom_size, nelder_mead &opt, vector<vec
     while(opt.max_value - opt.min_value > depth && opt.repeated_shrinkages < 4){
         opt.iterate(&to_be_optimized_only_near_sites);
         
-        cerr << "INFO simplex_size: " << opt.simplex_size() << " output range: " << opt.max_value - opt.min_value << "\n";
+        if(context.options.verbose_stderr){
+            cerr << "nelder-mead simplex_size: " << opt.simplex_size() << " output range: " << opt.max_value - opt.min_value << "\n";
+        }
     }
 
     return opt.points[opt.max_index];
@@ -1135,7 +681,10 @@ vector<double> search_sites_fast_fix_all_but_last(double chrom_size, nelder_mead
 
     while(opt.max_value - opt.min_value > depth && opt.repeated_shrinkages < 4){
         opt.iterate(&to_be_optimized_only_near_sites);
-        cerr << "INFO simplex_size: " << opt.simplex_size() << " output range: " << opt.max_value - opt.min_value << "\n";
+
+        if(context.options.verbose_stderr){
+            cerr << "nelder-mead simplex_size: " << opt.simplex_size() << " output range: " << opt.max_value - opt.min_value << "\n";
+        }
     }
 
     vector<double> ans(sites.size()*3);
@@ -1164,7 +713,7 @@ vector<double> search_sites_fast_fix_all_but_last(double chrom_size, nelder_mead
 
 
 
-//BAD
+
 vector<double> search_sites_fast_dom0(double chrom_size, nelder_mead &opt, vector<vector<double>> sites, double width, double height, double depth){
 
     vector<double> center_point(sites.size()*2);
@@ -1189,11 +738,13 @@ vector<double> search_sites_fast_dom0(double chrom_size, nelder_mead &opt, vecto
     }
 
     opt.calculate_points(&to_be_optimized_pop0_dominant_fast);
-    int iterations = 0;
-    while(opt.max_value - opt.min_value > depth && opt.repeated_shrinkages < 4 && iterations < 16){
+    
+    while(opt.max_value - opt.min_value > depth && opt.repeated_shrinkages < 4){
         opt.iterate(&to_be_optimized_pop0_dominant_fast);
-        iterations++;
-        cerr << "INFO simplex_size: " << opt.simplex_size() << " output range: " << opt.max_value - opt.min_value << "\n";
+
+        if(context.options.verbose_stderr){
+            cerr << "nelder-mead simplex_size: " << opt.simplex_size() << " output range: " << opt.max_value - opt.min_value << "\n";
+        }
     }
 
     return opt.points[opt.max_index];
@@ -1223,11 +774,13 @@ vector<double> search_sites_fast_dom1(double chrom_size, nelder_mead &opt, vecto
     }
 
     opt.calculate_points(&to_be_optimized_pop1_dominant_fast);
-    int iterations = 0;
-    while(opt.max_value - opt.min_value > depth && opt.repeated_shrinkages < 4 && iterations < 16){
+
+    while(opt.max_value - opt.min_value > depth && opt.repeated_shrinkages < 4){
         opt.iterate(&to_be_optimized_pop1_dominant_fast);
-        iterations++;
-        cerr << "INFO simplex_size: " << opt.simplex_size() << " output range: " << opt.max_value - opt.min_value << "\n";
+
+        if(context.options.verbose_stderr){
+            cerr << "nelder-mead simplex_size: " << opt.simplex_size() << " output range: " << opt.max_value - opt.min_value << "\n";
+        }
     }
 
     return opt.points[opt.max_index];
@@ -1258,11 +811,13 @@ vector<double> search_sites_fast_additive(double chrom_size, nelder_mead &opt, v
     }
 
     opt.calculate_points(&to_be_optimized_additive_fast);
-    int iterations = 0;
-    while(opt.max_value - opt.min_value > depth && opt.repeated_shrinkages < 4 && iterations < 16){
+
+    while(opt.max_value - opt.min_value > depth && opt.repeated_shrinkages < 4){
         opt.iterate(&to_be_optimized_additive_fast);
-        iterations++;
-        cerr << "INFO simplex_size: " << opt.simplex_size() << " output range: " << opt.max_value - opt.min_value << "\n";
+
+        if(context.options.verbose_stderr){
+            cerr << "nelder-mead simplex_size: " << opt.simplex_size() << " output range: " << opt.max_value - opt.min_value << "\n";
+        }
     }
 
     return opt.points[opt.max_index];

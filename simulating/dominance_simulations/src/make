@@ -1,3 +1,3 @@
 cd ahmmsrc
 make
-cp ancestry_hmm ..
+cp ahmm_mls ..

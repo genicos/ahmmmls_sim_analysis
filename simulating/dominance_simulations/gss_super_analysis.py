@@ -17,6 +17,7 @@ for f in OUTfiles:
     params = f.split('_')
     params[0] = params[0][3:]
     ident = tuple(params[0:2])
+    
     if not (ident in info):
         info[ident] = [0,[],[],[],[],int(params[2]),int(params[3]),int(params[4])]
     info[ident][0] = info[ident][0] + 1
@@ -25,21 +26,24 @@ for f in OUTfiles:
     first = True
     for i in range(len(OUT)):
         line = OUT[i]
-        if line[0] == 'G':
+        if line.split(' ')[0] == 'Pop0' and line.split(' ')[1] == 'dom':
             next_line = OUT[i+1]
             
-            lnl = float(line.split(' ')[-1])
+            lnl = float(line.split()[-1])
             
-            strength = 0
-            if first:
-                strength = float(next_line.split('\t')[2].split(' ')[0].split(',')[2])
-                info[ident][1].append(lnl)
-                info[ident][2].append(strength)
-            else:
-                strength = float(next_line.split('\t')[2].split(' ')[0].split(',')[0])
-                info[ident][3].append(lnl)
-                info[ident][4].append(strength)
-            first = False
+            strength = float(next_line.split('\t')[2].split(' ')[0].split(',')[2])
+            info[ident][1].append(lnl)
+            info[ident][2].append(strength)
+        
+        if line.split(' ')[0] == 'Additive' and line.split(' ')[1] == 'lnl':
+            next_line = OUT[i+1]
+            
+            lnl = float(line.split()[-1])
+            
+            strength = float(next_line.split('\t')[2].split(' ')[0].split(',')[0])
+            info[ident][3].append(lnl)
+            info[ident][4].append(strength)
+            
      
 print("count","gens","m","sel","lnl0","sel0","lnl1","sel1", sep='\t')
 

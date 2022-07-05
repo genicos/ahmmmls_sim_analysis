@@ -11,4 +11,4 @@ gen_array=(100 200 500 1000)
 prop=${m_array[$m]}
 generations=${gen_array[$gens]}
 
-./ancestry_hmm -i panels/panel${batch}_${piece}_${index} -s sample -S $prop $generations -P gss_outputs/jesper_out1_0_0 -D > ../outputs/OUT${batch}_${piece}_${gens}_${m}_${sel}_${index}
+./ahmm_mls -i panels/panel${batch}_${piece}_${index} -s sample -m $prop $generations -l site_file -c 1 -vo > ../outputs/OUT${batch}_${piece}_${gens}_${m}_${sel}_${index}

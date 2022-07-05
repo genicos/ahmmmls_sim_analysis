@@ -219,82 +219,46 @@ void cmd_line::read_cmd_line ( int argc, char *argv[] ) {
         }
 
 
-        //new additions
-        if ( strcmp(argv[i], "-S") == 0){
-            
-            selection_mode = true;
+
+
+        if ( strcmp(argv[i], "-l") == 0 ){
+            use_site_file = true;
+
+            site_file = string(argv[++i]);
+        }
+        
+        if ( strcmp(argv[i], "-m") == 0 ){
+            admixture_parameters_set = true;
 
             m = stod(argv[++i]);
             generations = stoi(argv[++i]);
-
-            i++;
-
-            if(strcmp(argv[i], "-O") == 0){
-                optimize_selection = true;
-            }else if(strcmp(argv[i], "-P") == 0){
-                use_ahmm_s_peaks = true;
-
-                gss_output = string(argv[++i]);
-
-                if(++i < argc){
-                    if(strcmp(argv[i], "-D") == 0){
-                        restrict_to_dominance = true;
-                    }
-                }
-            }else{
-
-                int sites_count = atoi(argv[i]);
-
-                for( int s = 0; s < sites_count; s++){
-                    selected_sites.push_back(stod(argv[++i]));
-                }
-                
-
-                for( int s = 0; s < sites_count; s++){
-                    std::string fitness = argv[++i];
-                    vector<double> fitness_vector(3);
-
-
-                    fitness_vector[0] =  stod(fitness.substr(0, fitness.find(",")));
-                    fitness.erase(0, fitness.find(",") + 1);
-                    fitness_vector[1] = stod(fitness.substr(0, fitness.find(",")));
-                    fitness.erase(0, fitness.find(",") + 1);
-                    fitness_vector[2] = stod(fitness);
-                    
-
-
-                    fitnesses.push_back(fitness_vector);
-                }
-            
-                //Sort selected sites and fitnesses///////////////////////////
-                struct Selected_pair{                                       //
-                    double A;
-                    vector<double> B;
-
-                    bool operator<(const Selected_pair x) const
-                        { return A < x.A;}
-                };
-                
-                //Fill vector of structs
-                vector<Selected_pair> selected_pairs(selected_sites.size());
-                for(int i = 0; i < selected_pairs.size(); i++){
-                    Selected_pair ss;
-                    ss.A = selected_sites[i];
-                    ss.B = fitnesses[i];
-                    selected_pairs[i] = ss;
-                }
-                
-                //sort
-                sort(selected_pairs.begin(), selected_pairs.end());
-                
-                //return to prev representation
-                for(int i = 0; i < selected_pairs.size();i++){
-                    selected_sites[i] = selected_pairs[i].A;
-                    fitnesses[i]      = selected_pairs[i].B;
-                }                                                           //
-                //////////////////////////////////////////////////////////////
-            }
         }
+
+        if ( strcmp(argv[i], "-M") == 0 ){
+            use_model_file = true;
+
+            model_file = string(argv[++i]);
+        }
+
+        if ( strcmp(argv[i], "-c") == 0 ){
+            
+            cores = stoi(argv[++i]);
+        }
+
+        if ( strcmp(argv[i], "-S") == 0 ){
+
+            uninformed_inference = true;
+
+        }
+
+        if( strcmp(argv[i], "-vc") == 0 ){
+            verbose_stderr = true;
+        }
+
+        if( strcmp(argv[i], "-vo") == 0 ){
+            verbose_stdout = true;
+        }
+
 
         
 
@@ -315,6 +279,16 @@ void cmd_line::read_cmd_line ( int argc, char *argv[] ) {
         print_usage() ;
         exit(1) ;
     }
+
+    /*
+    if ( use_site_file == false && use_model_file == false){
+        cerr << "\n\n\t\tERROR: must provide either site file or model file \n\n\t\t\t-l [path/to/site_file]\n\n" ;
+        cerr << "\t\t\t-M [path/to/model_file]\n\n" ;
+        print_usage() ;
+        exit(1) ;
+    }
+    */
+    
     if ( ancestry_proportion.size() > ancestry_pulses.size() ) {
 	cerr << "\n\n\t\tERROR: insufficient ancestry pulses specified\n\n" ;
 	print_usage() ; 

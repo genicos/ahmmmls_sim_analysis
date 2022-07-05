@@ -1,3 +1,5 @@
+./twopieces 0 0 0 0 &
+wait
 
 ./twopieces 1 0 0 2 &
 wait

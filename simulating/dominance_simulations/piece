@@ -9,6 +9,5 @@ echo piece $1 $2 $3 $4 $5
 seq 0 19 | parallel python3 selection_generator.py $1 $2 $3 $4 $5 {}
 cd src
 seq 0 19 | parallel ./gen_panel                  $1 $2 $3 $4 $5 {}
-# seq 0 19 | parallel ./run_ahmms                  $1 $2 $3 $4 $5{}
-seq 0 19 | parallel ./run_ahmmmls                 $1 $2 $3 $4 $5{}
+seq 0 19 | parallel ./run_ahmmmls                 $1 $2 $3 $4 $5 {}
  
