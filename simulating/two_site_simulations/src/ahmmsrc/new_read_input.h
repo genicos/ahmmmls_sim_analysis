@@ -84,12 +84,10 @@ void selection_read_file ( cmd_line &options, vector<markov_chain> &markov_chain
             }
             new_line.recombination_rate = extra_recombination ;
             extra_recombination = 0 ;
-        
-	/// RUSS TRANSLATES TO morgans/bp here
-	/// this is modified to remove the devide by segment length argument
+            
+	        /// this is modified to remove the devide by segment length argument
             recombination_rate.push_back( new_line.recombination_rate ) ;
             
-            //cout << recombination_rate.back() << " " << recombination_rate.size() <<  "\n";
         }
 
         /// record position

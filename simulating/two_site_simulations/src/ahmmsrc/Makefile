@@ -5,7 +5,7 @@ ARMAFLAGS = -larmadillo
 PTHREADFLAGS = -lpthread
 
 all:
-	$(LINK.cc) -g -O3 -o ancestry_hmm ancestry_hmm.cpp $(ARMAFLAGS) $(PTHREADFLAGS)
+	$(LINK.cc) -g -O3 -o ahmm_mls ahmm_mls.cpp $(ARMAFLAGS) $(PTHREADFLAGS)
 ### if tcmalloc is installed, this can be linked using the command below instead
 #	$(LINK.cc) -O3 -o ancestry_hmm ancestry_hmm.cpp $(TCFLAGS) $(ARMAFLAGS)
 

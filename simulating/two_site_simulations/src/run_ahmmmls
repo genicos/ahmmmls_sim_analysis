@@ -5,4 +5,4 @@ dist=$4
 index=$5
 
 
-./ancestry_hmm -i panels/panel${batch}_${piece}_${index} -s sample -S 0.2 500 -P gss_outputs/jesper_out1_0_0 -D > ../outputs/OUT${batch}_${piece}_${sel}_${dist}_${index}
+./ahmm_mls -i panels/panel${batch}_${piece}_${index} -s sample -m 0.2 500 -l site_file -c 1 -vo > ../outputs/OUT${batch}_${piece}_${sel}_${dist}_${index}

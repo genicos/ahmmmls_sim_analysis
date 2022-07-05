@@ -50,7 +50,7 @@ vector<bool> index_to_gamete(int index, int sites){
 
 void HtoD(Row<double> *H, Row<double> *D){
     for (uint i = 0 ; i < H->n_elem; i++){
-        for (uint j = 0; j < H->n_elem; j++){
+        for (uint j = 0; j < H->n_elem; j++) {
             (*D)(i*H->n_elem + j) = (*H)(i) * (*H)(j);
         }
     }
@@ -68,7 +68,7 @@ void normH(Row<double> *H){
 }
 
 
-
+//m is proportion of ancestry type 0
 vector<double> adjacent_transition_rate(vector<double> recomb_rates, vector<vector<double>> fitnesses, double m,
     double n_site1, double n_site2, int generations){
     
@@ -76,7 +76,7 @@ vector<double> adjacent_transition_rate(vector<double> recomb_rates, vector<vect
     // inserting netural sites //////////////////////////////////////////////////////////////
     int sites = fitnesses.size() + 2;                                                      //
     int n_sites[2];
-
+    
     vector<double> neutral_fit(3);
     neutral_fit[0] = 1;
     neutral_fit[1] = 1;
@@ -138,6 +138,102 @@ vector<double> adjacent_transition_rate(vector<double> recomb_rates, vector<vect
     mat M(haploids*haploids, haploids, fill::zeros);
 
     Row<double> D(haploids*haploids, fill::zeros);
+    
+    // populate M matrix //////////////////////////////////////////////////////////////
+    //loop through all diploids                                                      //
+    
+    for (int i = 0; i < haploids; i++){
+        for (int j = 0; j < haploids; j++){
+            
+            int di = i*haploids + j;
+            vector<bool> chr1 = index_to_gamete(i, sites);
+            vector<bool> chr2 = index_to_gamete(j, sites);
+
+            
+            double fitness = 1;
+
+            for(int s = 0; s < sites; s++){
+                if     (chr1[s] == 0 && chr2[s] == 0)
+                    fitness *= fitnesses[s][0];
+                else if(chr1[s] == 1 && chr2[s] == 1)
+                    fitness *= fitnesses[s][2];
+                else
+                    fitness *= fitnesses[s][1];
+            }
+            
+            //calculating possible recombinants
+            vector<bool> recomb_chr1 = chr1;
+            vector<bool> recomb_chr2 = chr2;
+
+            // split before first site
+            M(di, gamete_to_index(recomb_chr1)) += recomb_rates[0]/2 * fitness;
+            M(di, gamete_to_index(recomb_chr2)) += recomb_rates[0]/2 * fitness;
+            
+            // split directly after site s
+            for(int s = 0; s < sites; s++){
+                recomb_chr1[s] = chr2[s];
+                recomb_chr2[s] = chr1[s];
+
+                M(di, gamete_to_index(recomb_chr1)) += recomb_rates[s+1]/2 * fitness;
+                M(di, gamete_to_index(recomb_chr2)) += recomb_rates[s+1]/2 * fitness;
+
+            }
+            
+        }
+    }                                                                                //
+    ///////////////////////////////////////////////////////////////////////////////////
+    
+    
+    // Run through generations /////////////
+    for(int g = 0; g < generations; g++) {//
+        HtoD(&H, &D);
+        H = D * M;
+        normH(&H);
+    }                                     //
+    ////////////////////////////////////////
+
+    
+    // Calculating transition rates ///////////////////////////////
+    vector<double> transitions(4);                               //
+    
+    for(int i = 0; i < haploids; i++){
+        int anc_of_site_1 = index_to_gamete(i,sites)[n_sites[0]];
+        int anc_of_site_2 = index_to_gamete(i,sites)[n_sites[1]];
+
+        if(anc_of_site_1 == 0 && anc_of_site_2 == 0)
+            transitions[0] += H(i);
+        
+        if(anc_of_site_1 == 0 && anc_of_site_2 == 1)
+            transitions[1] += H(i);
+
+        if(anc_of_site_1 == 1 && anc_of_site_2 == 0)
+            transitions[2] += H(i);
+
+        if(anc_of_site_1 == 1 && anc_of_site_2 == 1)
+            transitions[3] += H(i);
+
+    }                                                            //
+    ///////////////////////////////////////////////////////////////
+    
+    
+    return transitions;
+}
+
+
+vector<vector<double>> ancestry_trajectory(vector<double> recomb_rates, vector<vector<double>> fitnesses, double m,
+    int generations){
+    
+    int sites = fitnesses.size();
+    
+    int haploids = pow(2,sites);
+    
+    Row<double> H(haploids, fill::zeros);
+    H(0) = m;
+    H(haploids - 1) = 1 - m;
+
+    mat M(haploids*haploids, haploids, fill::zeros);
+
+    Row<double> D(haploids*haploids, fill::zeros);
 
     // populate M matrix //////////////////////////////////////////////////////////////
     //loop through all diploids                                                      //
@@ -178,70 +274,217 @@ vector<double> adjacent_transition_rate(vector<double> recomb_rates, vector<vect
                 M(di, gamete_to_index(recomb_chr2)) += recomb_rates[s+1]/2 * fitness;
 
             }
-
         }
     }                                                                                //
     ///////////////////////////////////////////////////////////////////////////////////
     
+    vector<vector<double>> ancestry_trajectories(generations + 1);
     
     // Run through generations /////////////
     for(int g = 0; g < generations; g++) {//
+        vector<double> this_generation_ancestry(sites);
+
+        for(int i = 0; i < sites; i++){
+            this_generation_ancestry[i] = 0;
+        }
+
+        for(int i = 0; i < haploids; i++){
+            
+            vector<bool> gamete = index_to_gamete(i, sites);
+
+
+            for(int j = 0; j < sites; j++){
+                
+                
+                if(!gamete[j]){
+                    this_generation_ancestry[j] += H(i);
+                }
+            }
+        }
+
+        ancestry_trajectories[g] = this_generation_ancestry;
+
+
         HtoD(&H, &D);
         H = D * M;
         normH(&H);
     }                                     //
     ////////////////////////////////////////
 
-    
-    // Calculating transition rates ///////////////////////////////
-    vector<double> transitions(4);                               //
-    
+    vector<double> this_generation_ancestry(sites);
+
+    for(int i = 0; i < sites; i++){
+        this_generation_ancestry[i] = 0;
+    }
+
     for(int i = 0; i < haploids; i++){
-        int anc_of_site_1 = index_to_gamete(i,sites)[n_sites[0]];
-        int anc_of_site_2 = index_to_gamete(i,sites)[n_sites[1]];
-
-        if(anc_of_site_1 == 0 && anc_of_site_2 == 0)
-            transitions[0] += H(i);
         
-        if(anc_of_site_1 == 0 && anc_of_site_2 == 1)
-            transitions[1] += H(i);
+        vector<bool> gamete = index_to_gamete(i, sites);
 
-        if(anc_of_site_1 == 1 && anc_of_site_2 == 0)
-            transitions[2] += H(i);
 
-        if(anc_of_site_1 == 1 && anc_of_site_2 == 1)
-            transitions[3] += H(i);
+        for(int j = 0; j < sites; j++){
+            
+            
+            if(!gamete[j]){
+                this_generation_ancestry[j] += H(i);
+            }
+        }
+    }
 
-    }                                                            //
-    ///////////////////////////////////////////////////////////////
-    
+    ancestry_trajectories[generations] = this_generation_ancestry;
 
-    return transitions;
+    return ancestry_trajectories;
 }
+
+
+
+//TODO, try this later
+vector<vector<double>> additive_adjacent_transition_rate(vector<double> recomb_rates, vector<vector<double>> fitnesses, double m,
+    int generations, double n_site1, double n_site2,  vector<vector<double>> ancestry_trajectory ) {
+    
+    //first, convert recomb_rates into loci locations of selected sites
+    vector<double> selected_loci(recomb_rates.size() - 1);
+
+    for(int i = 0; i < selected_loci.size(); i++){
+        if(i == 0){
+            selected_loci[i] = recomb_rates[i];
+        }else{
+            selected_loci[i] = selected_loci[i-1] + recomb_rates[i];
+        }
+    }
+
+    //Sel coefficients
+    vector<double> sel_coefficients(fitnesses.size());
+
+    for(int i = 0; i < sel_coefficients.size(); i++){
+        sel_coefficients[i] = fitnesses[i][2] / ( fitnesses[i][0] + fitnesses[i][2] );
+    }
+
+
+
+
+    Row<double> H(4, fill::zeros);
+    H(0) = m;
+    H(4 - 1) = 1 - m;
+
+    //for this function, M only accounts for recombination, not for selection
+    mat M(4*4, 4, fill::zeros);
+
+    Row<double> D(4*4, fill::zeros);
+
+
+    //Proportion of gametes where selected site is of ancestry 1, 
+    // for each neutral haplotypes
+    // so selected_haploid_linkage[i][h] is the proportion of all gametes
+    // where selected site i is of ancestry 1, which are on chrom with neutral haplotype h
+    vector<vector<double>> selected_haploid_linkage(selected_loci.size());
+    for(int i = 0; i < selected_loci.size(); i++){
+        vector<double> linkage(4);
+        linkage[0] = 0;
+        linkage[1] = 0;
+        linkage[2] = 0;
+        linkage[3] = 1;
+    }
+
+
+
+
+
+
+
+    vector<double> neutral_recomb_rates(3);
+    neutral_recomb_rates[0] = n_site1;
+    neutral_recomb_rates[1] = n_site2 - n_site1;
+    neutral_recomb_rates[2] = 1 - n_site2;
+
+    // populate M matrix //////////////////////////////////////////////////////////////
+    //loop through all diploids                                                      //
+    
+    for (int i = 0; i < 4; i++){
+        for (int j = 0; j < 4; j++){
+
+            int di = i*4 + j;
+            vector<bool> chr1 = index_to_gamete(i, 2);
+            vector<bool> chr2 = index_to_gamete(j, 2);
+
+
+            //calculating possible recombinants
+            vector<bool> recomb_chr1 = chr1;
+            vector<bool> recomb_chr2 = chr2;
+
+            // split before first site
+            M(di, gamete_to_index(recomb_chr1)) += neutral_recomb_rates[0]/2;
+            M(di, gamete_to_index(recomb_chr2)) += neutral_recomb_rates[0]/2;
+
+            // split directly after site s
+            for(int s = 0; s < 2; s++){
+                recomb_chr1[s] = chr2[s];
+                recomb_chr2[s] = chr1[s];
+
+                M(di, gamete_to_index(recomb_chr1)) += neutral_recomb_rates[s+1]/2;
+                M(di, gamete_to_index(recomb_chr2)) += neutral_recomb_rates[s+1]/2;
+
+            }
+        }
+    }                                                                                //
+    ///////////////////////////////////////////////////////////////////////////////////
+
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
 
 vector<double> local_ancestries;
 
-int complete_transition_rates_number_of_threads = 1;
 
 
+struct intra_model_shared_info{
+    long t;
+    vector<double> *neutral_sites;
+    vector<double> *recomb_rates_around_selected_sites;
+    vector<vector<double>> *fitnesses;
+    double m;
+    double generations;
+    vector<mat> *transition_matrices;
+    int cores;
+    vector<double> *selected_sites;
+};
 
-vector<double> *global_neutral_sites;
-vector<double> *global_recomb_rates_around_selected_sites;
-vector<vector<double>> *global_fitnesses;
-double global_m;
-int global_generations;
-vector<mat> *global_transition_matrices;
+void *single_window_process(void *void_info){
 
-void *single_window_process(void *threadid){
-
-    long t = (long)threadid;
+    struct intra_model_shared_info *info = (struct intra_model_shared_info *)void_info;
+    long t = info->t;
     
-    for(uint i = t; i < (*global_transition_matrices).size(); i+= complete_transition_rates_number_of_threads){
+    
+    for(uint i = t; i < (*info->transition_matrices).size(); i+= info->cores){
 
-        vector<double> trans = adjacent_transition_rate(*global_recomb_rates_around_selected_sites, *global_fitnesses, global_m, (*global_neutral_sites)[i], (*global_neutral_sites)[i + 1], global_generations);
+        vector<double> trans = adjacent_transition_rate(*info->recomb_rates_around_selected_sites, *info->fitnesses, info->m, (*info->neutral_sites)[i], (*info->neutral_sites)[i + 1], info->generations);
 
         mat transition_matrix(2,2,fill::zeros);
 
@@ -250,10 +493,11 @@ void *single_window_process(void *threadid){
         transition_matrix(1,0) = trans[2]/(trans[2] + trans[3]);
         transition_matrix(1,1) = 1 - transition_matrix(1,0);
 
-        (*global_transition_matrices)[i] = transition_matrix;
+        (*info->transition_matrices)[i] = transition_matrix;
         local_ancestries[i] = trans[0] + trans[1];
     }
 
+    free(void_info);
     pthread_exit(NULL);
     return NULL;
 }
@@ -266,15 +510,13 @@ vector<mat> calculate_transition_rates(
   vector<double> &recomb_rates_around_selected_sites,
   vector<vector<double>> &fitnesses,
   double m,
-  int generations
+  int generations,
+  int cores
 ){
     vector<mat> transition_matrices(recomb_rates_around_neutral_sites.size());
     local_ancestries.clear();
     local_ancestries.resize(recomb_rates_around_neutral_sites.size());
-
-    //NOTE im changing the relationship between neutral_sites and recomb_rates_around_neutral_sites
-    // im now treating recomb_rates_around_neutral_sites as if it only contains regions delimited by two neutral sites
-    // thus neutral_sites.size = recomb_rates_around_neutral_sites.size + 1
+    
 
     // Creating site vectors //////////////////////////////////////////////////////
     vector<double>  neutral_sites(recomb_rates_around_neutral_sites.size()  + 1);//
@@ -292,25 +534,29 @@ vector<mat> calculate_transition_rates(
         selected_sites[i] = sum;
     }                                                                            //
     ///////////////////////////////////////////////////////////////////////////////
-
-
-    // Populating global variables with local variables //////////////////////////////
-    global_neutral_sites = &neutral_sites;                                          //
-    global_recomb_rates_around_selected_sites = &recomb_rates_around_selected_sites;
-    global_fitnesses = &fitnesses;
-    global_m = m;
-    global_generations = generations;
-    global_transition_matrices = &transition_matrices;                              //
-    //////////////////////////////////////////////////////////////////////////////////
-
-
-    // Creating threads to deal with independent adjacent neutral regions //////////////////
-    vector<pthread_t> threads(complete_transition_rates_number_of_threads);               //
-
     
 
-    for(long t = 0; t < complete_transition_rates_number_of_threads; t++){
-        int rc = pthread_create(&threads[t], NULL, single_window_process, (void *)t);
+    
+    
+    // Creating threads to deal with independent adjacent neutral regions //////////////////
+    vector<pthread_t> threads(cores);                                                     //
+
+    
+    
+    for(long t = 0; t < cores; t++){
+
+        //Passing necessary info to thread
+        struct intra_model_shared_info *this_threads_info = (struct intra_model_shared_info *)malloc(sizeof(struct intra_model_shared_info));
+        this_threads_info->t = t;
+        this_threads_info->neutral_sites = &neutral_sites;
+        this_threads_info->recomb_rates_around_selected_sites = &recomb_rates_around_selected_sites;
+        this_threads_info->fitnesses = &fitnesses;
+        this_threads_info->m = m;
+        this_threads_info->generations = generations;
+        this_threads_info->transition_matrices = &transition_matrices;
+        this_threads_info->cores = cores;
+
+        int rc = pthread_create(&threads[t], NULL, single_window_process, (void *)this_threads_info);
         if (rc) {
             cerr << "ERROR: unable to create a thread," << rc << "\n";
             exit(-1);
@@ -319,12 +565,12 @@ vector<mat> calculate_transition_rates(
 
     
     //wait for all to finish by joining them
-    for (int t = 0; t < complete_transition_rates_number_of_threads; t++) {
+    for (int t = 0; t < cores; t++) {
         pthread_join(threads[t], NULL);
     }                                                                                     //
     ////////////////////////////////////////////////////////////////////////////////////////
-
     
+
     
     return transition_matrices;
 }
@@ -337,232 +583,6 @@ vector<mat> calculate_transition_rates(
 void alt_create_transition_matrix ( map<int,vector<mat> > &transition_matrix , vector<vector< map< vector<transition_information>, double > > > &transition_info, vector<double> &recombination_rate, vector<int> &positions, double &number_chromosomes, vector<mat> &transition_matrices);
 
 
-//indicie_bounds[i] corrosponds to a thread i, which will find transitions for
-// all grid sites in the range [indicie_bounds[i][0], indicie_bounds[i][1])
-vector<vector<int>> indicie_bounds;
-
-selection_opt grid_context;
-vector<vector<double>> *global_lnl_ratios;
-vector<double> *global_grid_sites;
-double grid_transitions_radius_in_morgans = 0.05;
-vector<vector<double>> grid_fitnesses;
-vector<vector<markov_chain>> thread_specific_markov_chain_information;
-
-
-
-void *single_grid_process(void *threadid){
-
-    long t = (long)threadid;
-    for(uint i = indicie_bounds[t][0]; i < indicie_bounds[t][1]; i++){
-        
-        //neutral sites index bounds
-        uint bottom_trans_matrix_index = 0;
-        uint top_trans_matrix_index = 0;
-        
-        
-        uint starting_point = i * (*global_neutral_sites).size()/(*global_grid_sites).size();
-        
-        //setting bottom_trans_matrix_index to be the lowest  neutral site which is within grid_transitions_radius_in_morgans away from grid site
-        //setting    top_trans_matrix_index to be the highest neutral site which is within grid_transitions_radius_in_morgans away from grid site //////////////////////////////////////////////
-        if((*global_grid_sites)[i] - grid_transitions_radius_in_morgans < (*global_neutral_sites)[starting_point]){                                                                           //
-            for(
-                bottom_trans_matrix_index = starting_point;
-                (*global_grid_sites)[i] - grid_transitions_radius_in_morgans < (*global_neutral_sites)[bottom_trans_matrix_index] && bottom_trans_matrix_index > 0;
-                bottom_trans_matrix_index--
-            ){}
-            for(
-                top_trans_matrix_index = bottom_trans_matrix_index;
-                (*global_grid_sites)[i] + grid_transitions_radius_in_morgans > (*global_neutral_sites)[top_trans_matrix_index] && top_trans_matrix_index < (*global_neutral_sites).size() - 1;
-                top_trans_matrix_index++
-            ){}
-        }
-        else if((*global_grid_sites)[i] + grid_transitions_radius_in_morgans >= (*global_neutral_sites)[starting_point]){
-
-            for(
-                top_trans_matrix_index = starting_point;
-                (*global_grid_sites)[i] + grid_transitions_radius_in_morgans > (*global_neutral_sites)[top_trans_matrix_index] && top_trans_matrix_index < (*global_neutral_sites).size() - 1;
-                top_trans_matrix_index++
-            ){}
-            for(
-                bottom_trans_matrix_index = top_trans_matrix_index;
-                (*global_grid_sites)[i] - grid_transitions_radius_in_morgans < (*global_neutral_sites)[bottom_trans_matrix_index] && bottom_trans_matrix_index > 0;
-                bottom_trans_matrix_index--
-            ){}
-        }                                                                                                                                                                                     //
-        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        
-
-
-        vector<double> recomb_around_selected_site(2);
-        recomb_around_selected_site[0] = (*global_grid_sites)[i];
-        recomb_around_selected_site[1] = (1 - (*global_grid_sites)[i]);
-
-        
-        for(uint j = 0; j < grid_fitnesses.size(); j++){
-            
-            vector<vector<double>> lone_fitness(1);
-            lone_fitness[0] = grid_fitnesses[j];
-
-            
-            vector<mat> truncated_transition_matricies((*global_neutral_sites).size() - 1);
-            
-            for(uint k = 0; k < truncated_transition_matricies.size(); k++){
-                
-                mat transition_matrix(2,2,fill::zeros);
-                
-                if(k < bottom_trans_matrix_index || k > top_trans_matrix_index){
-                    transition_matrix(0,0) = 0.5;
-                    transition_matrix(0,1) = 0.5;
-                    transition_matrix(1,0) = 0.5;
-                    transition_matrix(1,1) = 0.5;
-                }else{
-                    
-                    vector<double> trans = adjacent_transition_rate(recomb_around_selected_site, lone_fitness, global_m, (*global_neutral_sites)[k], (*global_neutral_sites)[k + 1], global_generations);
-                    
-                    transition_matrix(0,0) = trans[0]/(trans[0] + trans[1]);
-                    transition_matrix(0,1) = 1 - transition_matrix(0,0);
-                    transition_matrix(1,0) = trans[2]/(trans[2] + trans[3]);
-                    transition_matrix(1,1) = 1 - transition_matrix(1,0);
-                }
-                
-                truncated_transition_matricies[k] = transition_matrix;
-                
-            }
-            
-            
-            map<int,vector<mat> > transition_matrix ;
-            
-            alt_create_transition_matrix( transition_matrix, grid_context.transition_matrix_information[grid_context.markov_chain_information[0].ploidy_switch[0]], grid_context.n_recombs, grid_context.position, grid_context.markov_chain_information[0].ploidy_switch[0], truncated_transition_matricies ) ;
-            
-
-            
-            vector<mat> interploidy_transitions;
-            
-    
-            double lnl = 0 ;
-
-            
-            
-            for ( int m = 0 ; m < grid_context.markov_chain_information.size() ; m ++ ) {
-                lnl += grid_context.markov_chain_information[m].compute_forward_probabilities( transition_matrix, interploidy_transitions, bottom_trans_matrix_index, top_trans_matrix_index - 1) ;
-            }
-            
-            if(j){
-                (*global_lnl_ratios)[i][j] = lnl - (*global_lnl_ratios)[i][0];
-            }else{
-                (*global_lnl_ratios)[i][0] = lnl;
-            }
-            
-        }
-        
-        (*global_lnl_ratios)[i][0] = 0;
-
-        cerr << "\n lnl ratios from site " << (*global_grid_sites)[i] << "\n";
-        for(uint j = 0; j < (*global_lnl_ratios)[i].size(); j++){
-            cerr << (*global_lnl_ratios)[i][j] << " ";
-        }
-        cerr << "\n";
-
-    }
-    
-
-    pthread_exit(NULL);
-    return NULL;
-}
-
-vector<vector<double>> grid_search(
-  vector<double> &recomb_rates_around_neutral_sites,
-  double m,
-  int generations,
-  selection_opt &context
-){
-
-    grid_fitnesses.resize(0);
-
-    vector<double> point(3);
-    point[0] = 1;
-    point[1] = 1;
-    point[2] = 1;
-
-    grid_fitnesses.push_back(point);
-
-    for(int i = -1; i < 2; i+=2){
-        for(int j = -1; j < 2; j+=2){
-            point[0] = 1 + 0.02*i;
-            point[1] = 1;
-            point[2] = 1 + 0.02*j;
-            grid_fitnesses.push_back(point);
-        }
-    }
-    
-    // Creating site vectors /////////////////////////////////////////////////////
-    vector<double>  neutral_sites(recomb_rates_around_neutral_sites.size() + 1);//
-
-    double sum = 0;
-    neutral_sites[0] = 0;
-    for(uint i = 0; i < recomb_rates_around_neutral_sites.size(); i++){
-        sum += recomb_rates_around_neutral_sites[i];
-        neutral_sites[i + 1] = sum;
-    }
-    int grid_divisions = floor(sum * 200);                                      //
-    //////////////////////////////////////////////////////////////////////////////
-
-    
-    vector<double> grid_sites(grid_divisions);
-    for(int i = 0; i < grid_divisions; i++){
-        grid_sites[i] = ((i + 0.5)/grid_divisions * sum);
-    }
-
-    vector<vector<double>> lnl_ratios(grid_divisions);
-    for(uint i = 0; i < grid_divisions; i++){
-        lnl_ratios[i].resize(grid_fitnesses.size());
-    }
-
-
-
-    // Populating global variables with local variables //
-    global_neutral_sites = &neutral_sites;              //
-    global_m = m;
-    global_generations = generations;
-    global_grid_sites = &grid_sites;
-    grid_context = context;
-    global_lnl_ratios = &lnl_ratios;                    //
-    //////////////////////////////////////////////////////
-
-
-    // Assigning different grid points to different threads /////////////////////////
-    int number_of_threads = 5;                                                     //
-    
-
-    vector<pthread_t> threads(number_of_threads);
-    for(uint i = 0; i < indicie_bounds.size();i++){
-        indicie_bounds[i].clear();
-    }
-
-    indicie_bounds.resize(number_of_threads);
-
-    for(int i = 0; i < number_of_threads; i++){
-        indicie_bounds[i].push_back((grid_sites.size()*i)/number_of_threads);
-        indicie_bounds[i].push_back((grid_sites.size()*(i+1))/number_of_threads);
-    }
-    
-
-    for(long t = 0; t < number_of_threads; t++){
-        int rc = pthread_create(&threads[t], NULL, single_grid_process, (void *)t);
-        if (rc) {
-            cerr << "ERROR: unable to create a thread," << rc << "\n";
-            exit(-1);
-        }
-    }
-    
-    //wait for all to finish by joining them
-    for (int t = 0; t < number_of_threads; t++) {
-        pthread_join(threads[t], NULL);
-    }                                                                              //
-    /////////////////////////////////////////////////////////////////////////////////
-    
-    return lnl_ratios;
-}
 
 
 
@@ -575,29 +595,25 @@ vector<vector<double>> grid_search(
 
 
 
-
-//This uses the same global variables as calculate transition rates
-int fast_transition_rates_number_of_threads = 1;
 
 double fast_transitions_radius_in_morgans = 0.05;
 
-vector<double> *global_selected_sites;
 
+void *single_fast_window_process(void *void_info){
 
-void *single_fast_window_process(void *threadid){
-
-    long t = (long)threadid;
+    struct intra_model_shared_info *info = (struct intra_model_shared_info *)void_info;
+    long t = info->t;
     
-    for(uint i = t; i < (*global_transition_matrices).size(); i+= fast_transition_rates_number_of_threads){
+    for(uint i = t; i < (*info->transition_matrices).size(); i+= info->cores){
         
         vector<double> pertinent_selected_sites;
         vector<vector<double>> pertinent_fitnesses;
 
-        for(uint j = 0; j < (*global_selected_sites).size(); j++){
-            double distance = (*global_neutral_sites)[i] - (*global_selected_sites)[j];
+        for(uint j = 0; j < (*info->selected_sites).size(); j++){
+            double distance = (*info->neutral_sites)[i] - (*info->selected_sites)[j];
             if(distance <= fast_transitions_radius_in_morgans && distance >= -fast_transitions_radius_in_morgans){
-                pertinent_selected_sites.push_back((*global_selected_sites)[j]);
-                pertinent_fitnesses.push_back((*global_fitnesses)[j]);
+                pertinent_selected_sites.push_back((*info->selected_sites)[j]);
+                pertinent_fitnesses.push_back((*info->fitnesses)[j]);
             }
         }
 
@@ -612,7 +628,7 @@ void *single_fast_window_process(void *threadid){
             pertinent_recomb_rates_around_selected_sites[pertinent_selected_sites.size()] = 1 - pertinent_selected_sites[pertinent_selected_sites.size() - 1];
 
 
-            vector<double> trans = adjacent_transition_rate(pertinent_recomb_rates_around_selected_sites, pertinent_fitnesses, global_m, (*global_neutral_sites)[i], (*global_neutral_sites)[i + 1], global_generations);
+            vector<double> trans = adjacent_transition_rate(pertinent_recomb_rates_around_selected_sites, pertinent_fitnesses, info->m, (*info->neutral_sites)[i], (*info->neutral_sites)[i + 1], info->generations);
 
             mat transition_matrix(2,2,fill::zeros);
 
@@ -621,7 +637,7 @@ void *single_fast_window_process(void *threadid){
             transition_matrix(1,0) = trans[2]/(trans[2] + trans[3]);
             transition_matrix(1,1) = 1 - transition_matrix(1,0);
 
-            (*global_transition_matrices)[i] = transition_matrix;
+            (*info->transition_matrices)[i] = transition_matrix;
             local_ancestries[i] = trans[0] + trans[1];
         }else{
             mat transition_matrix(2,2,fill::zeros);
@@ -631,10 +647,11 @@ void *single_fast_window_process(void *threadid){
             transition_matrix(1,0) = 0.5;
             transition_matrix(1,1) = 0.5;
 
-            (*global_transition_matrices)[i] = transition_matrix;
+            (*info->transition_matrices)[i] = transition_matrix;
         }
     }
     
+    free(void_info);
     pthread_exit(NULL);
     return NULL;
 }
@@ -646,15 +663,14 @@ vector<mat> fast_transition_rates(
   vector<double> &recomb_rates_around_selected_sites,
   vector<vector<double>> &fitnesses,
   double m,
-  int generations
-){
+  int generations,
+  int cores
+) {
     vector<mat> transition_matrices(recomb_rates_around_neutral_sites.size());
+    
     local_ancestries.clear();
     local_ancestries.resize(recomb_rates_around_neutral_sites.size());
 
-    //NOTE im changing the relationship between neutral_sites and recomb_rates_around_neutral_sites
-    // im now treating recomb_rates_around_neutral_sites as if it only contains regions delimited by two neutral sites
-    // thus neutral_sites.size = recomb_rates_around_neutral_sites.size + 1
 
     // Creating site vectors //////////////////////////////////////////////////////
     vector<double>  neutral_sites(recomb_rates_around_neutral_sites.size()  + 1);//
@@ -674,24 +690,26 @@ vector<mat> fast_transition_rates(
     ///////////////////////////////////////////////////////////////////////////////
 
 
-    // Populating global variables with local variables //////////////////////////////
-    global_neutral_sites = &neutral_sites;                                          //
-    global_selected_sites = &selected_sites;
-    global_recomb_rates_around_selected_sites = &recomb_rates_around_selected_sites;
-    global_fitnesses = &fitnesses;
-    global_m = m;
-    global_generations = generations;
-    global_transition_matrices = &transition_matrices;                              //
-    //////////////////////////////////////////////////////////////////////////////////
-
-
 
     // Creating threads to deal with independent adjacent neutral regions //////////////////
-    
-    vector<pthread_t> threads(fast_transition_rates_number_of_threads);
+    vector<pthread_t> threads(cores);
 
-    for(long t = 0; t < fast_transition_rates_number_of_threads; t++){
-        int rc = pthread_create(&threads[t], NULL, single_fast_window_process, (void *)t);
+    for(long t = 0; t < cores; t++){
+
+        //Passing necessary info to thread
+        struct intra_model_shared_info *this_threads_info = (struct intra_model_shared_info *)malloc(sizeof(struct intra_model_shared_info));
+        this_threads_info->t = t;
+        this_threads_info->neutral_sites = &neutral_sites;
+        this_threads_info->recomb_rates_around_selected_sites = &recomb_rates_around_selected_sites;
+        this_threads_info->fitnesses = &fitnesses;
+        this_threads_info->m = m;
+        this_threads_info->generations = generations;
+        this_threads_info->transition_matrices = &transition_matrices;
+        this_threads_info->cores = cores;
+        
+        this_threads_info->selected_sites = &selected_sites;
+
+        int rc = pthread_create(&threads[t], NULL, single_fast_window_process, (void *)this_threads_info);
         if (rc) {
             cerr << "ERROR: unable to create a thread," << rc << "\n";
             exit(-1);
@@ -700,12 +718,181 @@ vector<mat> fast_transition_rates(
 
     
     //wait for all to finish by joining them
-    for (int t = 0; t < fast_transition_rates_number_of_threads; t++) {
+    for (int t = 0; t < cores; t++) {
         pthread_join(threads[t], NULL);
     }                                                                                     //
     ////////////////////////////////////////////////////////////////////////////////////////
 
     
+    
+    return transition_matrices;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//Actually 1 above number of pairs skipped
+int pairs_skipped = 4;
+
+
+
+//This version skips a few pairs, and interpolates in between them
+
+
+void *alt_single_fast_window_process(void *void_info){
+
+    struct intra_model_shared_info *info = (struct intra_model_shared_info *)void_info;
+    long t = info->t;
+    
+
+    //TODO each pair is responsible to spread the interpolation to those pairs around it
+    
+    for(uint i = t*pairs_skipped + (pairs_skipped/2); i < (*info->transition_matrices).size(); i+= info->cores*pairs_skipped){
+        
+        vector<double> pertinent_selected_sites;
+        vector<vector<double>> pertinent_fitnesses;
+
+        for(uint j = 0; j < (*info->selected_sites).size(); j++){
+            double distance = (*info->neutral_sites)[i] - (*info->selected_sites)[j];
+            if(distance <= fast_transitions_radius_in_morgans && distance >= -fast_transitions_radius_in_morgans){
+                pertinent_selected_sites.push_back((*info->selected_sites)[j]);
+                pertinent_fitnesses.push_back((*info->fitnesses)[j]);
+            }
+        }
+
+
+        vector<double> pertinent_recomb_rates_around_selected_sites(pertinent_selected_sites.size() + 1);
+
+        if(pertinent_selected_sites.size() >= 1){
+
+            pertinent_recomb_rates_around_selected_sites[0] = pertinent_selected_sites[0];
+            
+            for(uint j = 1; j < pertinent_selected_sites.size(); j++){
+                pertinent_recomb_rates_around_selected_sites[j] = pertinent_selected_sites[j] - pertinent_selected_sites[j - 1];
+            }
+
+            pertinent_recomb_rates_around_selected_sites[pertinent_selected_sites.size()] = 1 - pertinent_selected_sites[pertinent_selected_sites.size() - 1];
+        }else{
+
+            pertinent_recomb_rates_around_selected_sites[0] = 1;
+        }
+
+        
+
+
+        vector<double> trans = adjacent_transition_rate(pertinent_recomb_rates_around_selected_sites, pertinent_fitnesses, info->m, (*info->neutral_sites)[i], (*info->neutral_sites)[i + 1], info->generations);
+
+        mat transition_matrix(2,2,fill::zeros);
+
+        transition_matrix(0,0) = trans[0]/(trans[0] + trans[1]);
+        transition_matrix(0,1) = 1 - transition_matrix(0,0);
+        transition_matrix(1,0) = trans[2]/(trans[2] + trans[3]);
+        transition_matrix(1,1) = 1 - transition_matrix(1,0);
+
+
+        for(int j = i - (pairs_skipped/2); j <= i + ((pairs_skipped - 1)/2) && j < local_ancestries.size(); j++){
+
+            (*info->transition_matrices)[j] = transition_matrix;
+            local_ancestries[j] = trans[0] + trans[1];
+        }
+        
+        //If this is on the last set, then fill the rest
+        if(i > local_ancestries.size() - pairs_skipped){
+            for(int j = i + ((pairs_skipped - 1)/2) + 1; j < local_ancestries.size(); j++){
+
+                (*info->transition_matrices)[j] = transition_matrix;
+                local_ancestries[j] = trans[0] + trans[1];
+            }
+        }
+        
+    }
+    
+    free(void_info);
+    pthread_exit(NULL);
+    return NULL;
+}
+
+
+vector<mat> alternative_fast_transition_rates (
+  vector<double> &recomb_rates_around_neutral_sites,
+  vector<double> &recomb_rates_around_selected_sites,
+  vector<vector<double>> &fitnesses,
+  double m,
+  int generations,
+  int cores
+) {
+    vector<mat> transition_matrices(recomb_rates_around_neutral_sites.size());
+    
+    local_ancestries.clear();
+    local_ancestries.resize(recomb_rates_around_neutral_sites.size());
+
+
+    // Creating site vectors //////////////////////////////////////////////////////
+    vector<double>  neutral_sites(recomb_rates_around_neutral_sites.size()  + 1);//
+    vector<double> selected_sites(recomb_rates_around_selected_sites.size() - 1);
+
+    double sum = 0;
+    neutral_sites[0] = 0; //extra
+    for(uint i = 0; i < recomb_rates_around_neutral_sites.size(); i++){
+        sum += recomb_rates_around_neutral_sites[i];
+        neutral_sites[i + 1] = sum;
+    }
+    sum = 0;
+    for(uint i = 0; i < selected_sites.size(); i++){
+        sum += recomb_rates_around_selected_sites[i];
+        selected_sites[i] = sum;
+    }                                                                            //
+    ///////////////////////////////////////////////////////////////////////////////
+
+
+
+    // Creating threads to deal with independent adjacent neutral regions //////////////////
+    vector<pthread_t> threads(cores);
+    
+    for(long t = 0; t < cores; t++){
+
+        //Passing necessary info to thread
+        struct intra_model_shared_info *this_threads_info = (struct intra_model_shared_info *)malloc(sizeof(struct intra_model_shared_info));
+        this_threads_info->t = t;
+        this_threads_info->neutral_sites = &neutral_sites;
+        this_threads_info->recomb_rates_around_selected_sites = &recomb_rates_around_selected_sites;
+        this_threads_info->fitnesses = &fitnesses;
+        this_threads_info->m = m;
+        this_threads_info->generations = generations;
+        this_threads_info->transition_matrices = &transition_matrices;
+        this_threads_info->cores = cores;
+        
+        this_threads_info->selected_sites = &selected_sites;
+
+        int rc = pthread_create(&threads[t], NULL, alt_single_fast_window_process, (void *)this_threads_info);
+        if (rc) {
+            cerr << "ERROR: unable to create a thread," << rc << "\n";
+            exit(-1);
+        }
+    }
+
+    
+    //wait for all to finish by joining them
+    for (int t = 0; t < cores; t++) {
+        pthread_join(threads[t], NULL);
+    }                                                                                     //
+    ////////////////////////////////////////////////////////////////////////////////////////
+
     
     return transition_matrices;
 }
@@ -727,8 +914,7 @@ vector<mat> fast_transition_rates(
 //// create transition matrix for a given admixture model
 void alt_create_transition_matrix ( map<int,vector<mat> > &transition_matrix , vector<vector< map< vector<transition_information>, double > > > &transition_info, vector<double> &recombination_rate, vector<int> &positions, double &number_chromosomes, vector<mat> &transition_matrices) {
     
-
-
+    
     /// check if we already computed this for this sample ploidy
     if ( transition_matrix.find( number_chromosomes ) != transition_matrix.end() ) {
         return ;
@@ -739,7 +925,7 @@ void alt_create_transition_matrix ( map<int,vector<mat> > &transition_matrix , v
     transition_matrix[number_chromosomes].resize(recombination_rate.size()) ;
 
 
-
+    
     //// iterate across all positions and compute transition matrixes
 
     //NOTE changed p starting point from 1 to 0
@@ -751,14 +937,15 @@ void alt_create_transition_matrix ( map<int,vector<mat> > &transition_matrix , v
         
 
         /// population transitions by summing across all routes
-
+        
         transition_matrix[number_chromosomes][p] = mat(transition_info.size(),transition_info.size(), fill::zeros);
 
         
         for ( int i = 0 ; i < transition_info.size() ; i ++ ) {
             for ( int j = 0 ; j < transition_info[i].size() ; j ++ ) {
+                
                 for ( std::map<vector<transition_information>,double>::iterator t = transition_info[i][j].begin() ; t != transition_info[i][j].end() ; ++ t ) {
-                    
+
                     double prob_t = 1 ;
                     for ( int r = 0 ; r < t->first.size() ; r ++ ) {
                         prob_t *= pow( segment_transitions(t->first[r].start_state,t->first[r].end_state), t->first[r].transition_count ) ;
@@ -890,3 +1077,132 @@ mat alt_create_transition_rates ( vector<pulse> admixture_pulses, double n, vect
 }
 
 #endif
+
+
+
+//TODO
+void testing_stuff(){
+
+    //Testing that with two neutral sites,
+    //the transition rates between them as calculated
+    //with adjacent_transition_rate and ancestry_trajectory are the same
+    
+    vector<double> test_1_recomb(1);
+    test_1_recomb[0] = 1;
+    vector<vector<double>> test_1_fitness(0);
+
+    int test_1_t = 10;
+    double test_1_m = 0.2;
+
+
+    double test_1_n1 = 0.1;
+    double test_1_n2 = 0.3;
+    
+
+    vector<double> test_1_traj_recomb(3);
+    test_1_traj_recomb[0] = test_1_n1;
+    test_1_traj_recomb[1] = test_1_n2 - test_1_n1;
+    test_1_traj_recomb[2] = 1 - test_1_n2;
+    
+
+    vector<vector<double>> test_1_traj_fit(2);
+    vector<double> neut_fit(3);
+    neut_fit[0] = 1;
+    neut_fit[1] = 1;
+    neut_fit[2] = 1;
+    test_1_traj_fit[0] = neut_fit;
+    test_1_traj_fit[1] = neut_fit;
+    
+
+    vector<double> test_1_adj = adjacent_transition_rate(test_1_recomb, test_1_fitness, test_1_m,
+    test_1_n1, test_1_n2, test_1_t);
+    
+
+    vector<double> test_1_anc_1(2);
+    test_1_anc_1[0] = test_1_adj[0] + test_1_adj[1];
+    test_1_anc_1[1] = test_1_adj[0] + test_1_adj[2];
+
+    
+
+    vector<vector<double>> test_1_traj = ancestry_trajectory(test_1_traj_recomb, test_1_traj_fit, test_1_m,
+    test_1_t);
+   
+
+    vector<double> test_1_anc_2 = test_1_traj[test_1_t - 1];
+    
+
+    cerr<<"Should match: " << test_1_anc_1[0] << " " << test_1_anc_2[0] << "\n";
+    cerr<<"Should match: " << test_1_anc_1[1] << " " << test_1_anc_2[1] << "\n";
+
+
+
+
+
+
+
+    //Testing that with a selected site,
+    //the ancestry rates as calculated
+    //with adjacent_transition_rate and ancestry_trajectory are the same
+
+    int test_2_t = 265;
+    double test_2_m = 0.6152;
+
+
+    double test_2_n1 = 0.2354;
+    double test_2_n2 = 0.2531;
+
+    vector<double> test_2_fit(3);
+    test_2_fit[0] = 0.236;
+    test_2_fit[1] = 1;
+    test_2_fit[2] = 1.24;
+
+
+    
+    vector<double> test_2_recomb(2);
+    test_2_recomb[0] = test_2_n2;
+    test_2_recomb[1] = 1 - test_2_n2;
+
+    vector<vector<double>> test_2_fitness(1);
+    test_2_fitness[0] = test_2_fit;
+
+    
+
+    vector<double> test_2_traj_recomb(3);
+    test_2_traj_recomb[0] = test_2_n1;
+    test_2_traj_recomb[1] = test_2_n2 - test_2_n1;
+    test_2_traj_recomb[2] = 1 - test_2_n2;
+   
+
+    vector<vector<double>> test_2_traj_fit(2);
+    
+    test_2_traj_fit[0] = neut_fit;
+    test_2_traj_fit[1] = test_2_fit;
+    
+
+    vector<double> test_2_adj = adjacent_transition_rate(test_2_recomb, test_2_fitness, test_2_m,
+    test_2_n1, test_2_n2, test_2_t);
+    
+
+    vector<double> test_2_anc_1(2);
+    test_2_anc_1[0] = test_2_adj[0] + test_2_adj[1];
+    test_2_anc_1[1] = test_2_adj[0] + test_2_adj[2];
+
+    
+
+    vector<vector<double>> test_2_traj = ancestry_trajectory(test_2_traj_recomb, test_2_traj_fit, test_2_m,
+    test_2_t);
+    
+
+    vector<double> test_2_anc_2 = test_2_traj[test_2_t];
+    
+
+        
+    cerr<<"Should match: " << test_2_anc_1[0] << " " << test_2_anc_2[0] << "\n";
+    cerr<<"Should match: " << test_2_anc_1[1] << " " << test_2_anc_2[1] << "\n";
+
+}
+
+
+
+
+

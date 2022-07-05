@@ -194,6 +194,8 @@ int nelder_mead::calculate_points(double (*f)(vector<double>)){
     determine_max();
     determine_min();
     determine_scnd_min();
+
+    repeated_shrinkages = 0;
     
     return points.size();
 }
@@ -383,6 +385,7 @@ int nelder_mead::iterate(double (*f)(vector<double>)){
 //
 // the returned value is the scalar projection of (ground_truth - origin) onto
 // (director - origin) divided by the magnitude of (director - origin)
+//EXPERIMENTAL, UNUSED
 double nelder_mead::meta_optimize(vector<double> origin, vector<double> director){
 
     vector<double> truth_displacement(origin.size());

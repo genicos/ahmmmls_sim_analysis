@@ -217,13 +217,11 @@ vector<double> selection_opt::examine_peaks(){
 
             //FIX replace false with !options.restrict_to_dominance
             if(false){
-                
-                //FIX replace 0 with options.gss_out_sel[peaks[i]]
-                double s = 0;
+
+                double s = options.gss_out_sel[peaks[i]];
 
                 vector<double> starting_parameters(3);
-                //FIX replace 0.2 with options.gss_out_pos[peaks[i]]
-                starting_parameters[0] = 0.2;
+                starting_parameters[0] = options.gss_out_pos[peaks[i]];
                 starting_parameters[1] = 1/(1-s/2);
                 starting_parameters[2] = (1-s)/(1-s/2);
 
@@ -244,13 +242,12 @@ vector<double> selection_opt::examine_peaks(){
                 double new_lnl = to_be_optimized(best_parameters);
 
                 cout << "\n\nGss lnl ratio: " << options.gss_out_llr[peaks[i]] << " new lnl ratio: " << new_lnl - neutral_lnl << "\n";
-                cerr << "\n\nGss lnl ratio: " << options.gss_out_llr[peaks[i]] << " new lnl ratio: " << new_lnl - neutral_lnl << "\n";
                 cout << "site:\t" << sites[0][0] << "\t" << sites[sites.size() - 1][1] << ",1," << sites[sites.size() - 1][2] << " or " << sites[sites.size() - 1][1]/max(sites[sites.size() - 1][1], sites[sites.size() - 1][2]) << ","<< 1/max(sites[sites.size() - 1][1], sites[sites.size() - 1][2]) <<"," << sites[sites.size() - 1][2]/max(sites[sites.size() - 1][1], sites[sites.size() - 1][2]) << "\n";
-                cerr << "site:\t" << sites[0][0] << "\t" << sites[sites.size() - 1][1] << ",1," << sites[sites.size() - 1][2] << " or " << sites[sites.size() - 1][1]/max(sites[sites.size() - 1][1], sites[sites.size() - 1][2]) << ","<< 1/max(sites[sites.size() - 1][1], sites[sites.size() - 1][2]) <<"," << sites[sites.size() - 1][2]/max(sites[sites.size() - 1][1], sites[sites.size() - 1][2]) << "\n";
+            
             }
             
             //FIX replace false with else and connect to last statement
-            if(false){
+            if(true){
                 
                 vector<double> dom_starting_parameters(2);
                 //FIX replace 0.2 with options.gss_out_pos[peaks[i]]
@@ -283,7 +280,8 @@ vector<double> selection_opt::examine_peaks(){
 
 
 
-                sites = parameters_to_sites(add_starting_parameters, 2);
+                
+		sites = parameters_to_sites(add_starting_parameters, 2);
 
                 best_parameters = multi_level_optimization(
                     chrom_size,
@@ -300,7 +298,7 @@ vector<double> selection_opt::examine_peaks(){
                 cerr << "\n\nlnl ratio (restricted to additive): " << new_lnl - neutral_lnl << "\n";
                 cout << "site:\t" << sites[0][0] << "\t" << (1-sites[0][1]) << ","<< (1-sites[0][1]/2) << ",1\t1," << (1-sites[0][1]/2)/(1-sites[0][1]) << "," << 1/(1-sites[0][1]) << "\n";
                 cerr << "site:\t" << sites[0][0] << "\t" << (1-sites[0][1]) << ","<< (1-sites[0][1]/2) << ",1\t1," << (1-sites[0][1]/2)/(1-sites[0][1]) << "," << 1/(1-sites[0][1]) << "\n";
-
+               
 
 
 
@@ -329,24 +327,26 @@ vector<double> selection_opt::examine_peaks(){
             //////
 
             //FIX replace true with something idk
-            if(true){
+            if(false){
             //////
                 //Seeing if this site is actually 2 seperate sites
             
 
             //FIX replace both 0.2 with options.gss_out_pos[peaks[i]]
-            vector<double> starting_params(4);
-            starting_params[0] = 0.2 - 0.01;
-            starting_params[1] = 0;
-            //starting_params[2] = 1;
-            starting_params[2] = 0.2 + 0.01;
-            starting_params[3] = 0;
-            //starting_params[5] = 1;
+            vector<double> starting_params(6);
+            starting_params[0] = options.gss_out_pos[peaks[i]] - 0.01;
+            starting_params[1] = 1;
+            starting_params[2] = 1;
+            starting_params[3] = options.gss_out_pos[peaks[i]] + 0.01;
+            starting_params[4] = 1;
+            starting_params[5] = 1;
 
 
             double best_ratio = -DBL_MAX;
 
-            vector<vector<double>> sites = parameters_to_sites(starting_params,2);
+            vector<vector<double>> sites = parameters_to_sites(starting_params);
+            vector<double> found_parameters;
+
             
 
             vector<double> best_parameters = multi_level_optimization(
@@ -354,47 +354,24 @@ vector<double> selection_opt::examine_peaks(){
                 optimizer,
                 sites,
                 two_site_bottle_necks,
-                &search_sites_fast_additive,
-                2
+                &search_sites_fast
             );
             
             
-
-            double new_lnl = to_be_optimized_additive(best_parameters);
             
+
+            sites = parameters_to_sites(best_parameters);
+
+            double new_lnl = to_be_optimized(best_parameters);
+
             cout << "Gss lnl ratio: " << options.gss_out_llr[peaks[i]] << " new lnl ratio: " << new_lnl - neutral_lnl << "\n";
-            cerr << "Gss lnl ratio: " << options.gss_out_llr[peaks[i]] << " new lnl ratio: " << new_lnl - neutral_lnl << "\n";
+            cerr << "site:\t" << sites[0][0] << "\t" << sites[0][1] << ",1," << sites[0][2] << " or " << sites[0][1]/max(sites[0][1], sites[0][2]) << ","<< 1/max(sites[0][1], sites[0][2]) <<"," << sites[0][2]/max(sites[0][1], sites[0][2]) << "\n";
+            cerr << "site:\t" << sites[1][0] << "\t" << sites[1][1] << ",1," << sites[1][2] << " or " << sites[1][1]/max(sites[1][1], sites[1][2]) << ","<< 1/max(sites[1][1], sites[1][2]) <<"," << sites[1][2]/max(sites[1][1], sites[1][2]) << "\n";
 
-            cout << "site:\t" << sites[0][0] << "\t" << (1-sites[0][1]) << ","<< (1-sites[0][1]/2) << ",1\t1," << (1-sites[0][1]/2)/(1-sites[0][1]) << "," << 1/(1-sites[0][1]) << "\n";
-            cerr << "site:\t" << sites[0][0] << "\t" << (1-sites[0][1]) << ","<< (1-sites[0][1]/2) << ",1\t1," << (1-sites[0][1]/2)/(1-sites[0][1]) << "," << 1/(1-sites[0][1]) << "\n";
-            cout << "site:\t" << sites[1][0] << "\t" << (1-sites[1][1]) << ","<< (1-sites[1][1]/2) << ",1\t1," << (1-sites[1][1]/2)/(1-sites[1][1]) << "," << 1/(1-sites[1][1]) << "\n";
-            cerr << "site:\t" << sites[1][0] << "\t" << (1-sites[1][1]) << ","<< (1-sites[1][1]/2) << ",1\t1," << (1-sites[1][1]/2)/(1-sites[1][1]) << "," << 1/(1-sites[1][1]) << "\n";
-
-
-
-            vector<double> add_starting_parameters(2);
-            add_starting_parameters[0] = 0.2;
-            add_starting_parameters[1] = 0;
-
-
-            sites = parameters_to_sites(add_starting_parameters, 2);
-
-            best_parameters = multi_level_optimization(
-                chrom_size,
-                optimizer,
-                sites,
-                bottle_necks,
-                &search_sites_fast_additive,
-                2
-            );
-
-            new_lnl = to_be_optimized_additive(best_parameters);
-
-            cout << "\n\nlnl ratio (restricted to additive): " << new_lnl - neutral_lnl << "\n";
-            cerr << "\n\nlnl ratio (restricted to additive): " << new_lnl - neutral_lnl << "\n";
-            cout << "site:\t" << sites[0][0] << "\t" << (1-sites[0][1]) << ","<< (1-sites[0][1]/2) << ",1\t1," << (1-sites[0][1]/2)/(1-sites[0][1]) << "," << 1/(1-sites[0][1]) << "\n";
-            cerr << "site:\t" << sites[0][0] << "\t" << (1-sites[0][1]) << ","<< (1-sites[0][1]/2) << ",1\t1," << (1-sites[0][1]/2)/(1-sites[0][1]) << "," << 1/(1-sites[0][1]) << "\n";
-
+            cout << "\n\nTesting Possibility of multiple sites\n";
+            cout << "Gss lnl ratio: " << options.gss_out_llr[peaks[i]] << " new lnl ratio: " << new_lnl - neutral_lnl << "\n";
+            cout << "site:\t" << sites[0][0] << "\t" << sites[0][1] << ",1," << sites[0][2] << " or " << sites[0][1]/max(sites[0][1], sites[0][2]) << ","<< 1/max(sites[0][1], sites[0][2]) <<"," << sites[0][2]/max(sites[0][1], sites[0][2]) << "\n";
+            cout << "site:\t" << sites[1][0] << "\t" << sites[1][1] << ",1," << sites[1][2] << " or " << sites[1][1]/max(sites[1][1], sites[1][2]) << ","<< 1/max(sites[1][1], sites[1][2]) <<"," << sites[1][2]/max(sites[1][1], sites[1][2]) << "\n";
             }
                 //
             //////
