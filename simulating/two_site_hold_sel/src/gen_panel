@@ -1,0 +1,13 @@
+batch=$1
+piece=$2
+gens=$3
+m=$4
+dist=$5
+index=$6
+
+
+rm -f selam_outputs/selam_output${batch}_${piece}_${index}
+./SELAM -d nls_demography.txt -o outputs/output${batch}_${piece}_${index} -c 2 0.427 0 -s selections/selection${batch}_${piece}_${index}
+rm -f panels/panel${batch}_${piece}_${index}
+perl simulate_reads.pl 1 1 selam_outputs/selam_output${batch}_${piece}_${index} < drosophila.0.4.txt > panels/panel${batch}_${piece}_${index}
+
