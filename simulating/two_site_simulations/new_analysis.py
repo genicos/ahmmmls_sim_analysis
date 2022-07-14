@@ -10,7 +10,7 @@ output_dir = "outputs"
 OUTfiles = [f for f in listdir(output_dir) if isfile(join(output_dir, f)) and f[0] == 'O']
 
 
-selections_array = [('0.01','0.01'),('0.01','0.05'),('0.05','0.05')]
+selections_array = [('0.001','0.001'),('0.001','0.005'),('0.001','0.01'),('0.001','0.05'),('0.005','0.005'),('0.005','0.01'),('0.005','0.05') ,('0.01','0.01'),('0.01','0.05'),('0.05','0.05')]
 
 dist_array = ['0.005','0.01','0.02','0.05']
 
@@ -28,12 +28,12 @@ for f in OUTfiles:
      
     for i in range(len(OUT)):
         line = OUT[i]
-        if line[0] == 'G':
+        if line[0] == 'T' and line[13] == 'r':
             
             line1 = OUT[i+1]
             line2 = OUT[i+2]
             
-            lnl = float(line.split(' ')[-1])
+            lnl = float(line.split()[-1])
             
             site1_loc = float(line1.split('\t')[1])
             site2_loc = float(line2.split('\t')[1])
@@ -57,10 +57,10 @@ for f in OUTfiles:
             info[ident][6].append(site1_sel)
             info[ident][7].append(site2_sel)
         
-        if line[0] == 'l':
+        if line[0] == 'A':
             line1 = OUT[i+1]
             
-            lnl = float(line.split(' ')[-1])
+            lnl = float(line.split()[-1])
             
             site_loc = float(line1.split('\t')[1])
             
