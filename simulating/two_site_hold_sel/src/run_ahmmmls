@@ -1,0 +1,14 @@
+batch=$1
+piece=$2
+gens=$3
+m=$4
+dist=$5
+index=$6
+
+m_array=(0.05 0.1 0.2 0.5)
+gen_array=(100 200 500 1000)
+
+prop=${m_array[$m]}
+generations=${gen_array[$gens]}
+
+./ahmm_mls -i panels/panel${batch}_${piece}_${index} -s sample -m $prop $generations -l site_file -c 1 -vo > ../outputs/OUT${batch}_${piece}_${gens}_${m}_${dist}_${index}
